@@ -1,0 +1,401 @@
+@import "tailwindcss";
+
+:root {
+  --color-bg: #f6f7fe;
+  --color-bg-alt: #ffffff;
+  --color-primary: #2f67f6;
+  --color-secondary: #5b5ce2;
+  --color-accent: #0ea5e9;
+  --color-dark: #0f172a;
+  --color-muted: #6b7280;
+  --color-text: #121a2b;
+  --color-text-light: #67758f;
+  --color-text-inverse: #ffffff;
+  --border-color: #dce4f5;
+  --input-bg: #ffffff;
+  --card-bg: #ffffff;
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+  --shadow-sm: 0 2px 6px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.12);
+  --shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.18);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --transition: all 0.25s ease;
+
+  --background: var(--color-bg);
+  --foreground: var(--color-text);
+  --card: var(--card-bg);
+  --card-foreground: var(--color-text);
+  --popover: var(--color-bg-alt);
+  --popover-foreground: var(--color-text);
+  --primary: var(--color-primary);
+  --primary-foreground: var(--color-text-inverse);
+  --secondary: var(--color-secondary);
+  --secondary-foreground: var(--color-text-inverse);
+  --muted: color-mix(in srgb, var(--color-bg) 84%, #ffffff);
+  --muted-foreground: var(--color-text-light);
+  --accent: var(--color-accent);
+  --accent-foreground: var(--color-text-inverse);
+  --destructive: var(--color-error);
+  --destructive-foreground: var(--color-text-inverse);
+  --border: var(--border-color);
+  --input: var(--border-color);
+  --ring: color-mix(in srgb, var(--color-primary) 68%, #ffffff);
+  --chart-1: var(--color-primary);
+  --chart-2: var(--color-secondary);
+  --chart-3: var(--color-accent);
+  --chart-4: #0ea5e9;
+  --chart-5: #a78bfa;
+  --sidebar: var(--color-bg-alt);
+  --sidebar-foreground: var(--color-text);
+  --sidebar-primary: var(--color-primary);
+  --sidebar-primary-foreground: var(--color-text-inverse);
+  --sidebar-accent: color-mix(in srgb, var(--color-primary) 10%, #ffffff);
+  --sidebar-accent-foreground: var(--color-text);
+  --sidebar-border: var(--border-color);
+  --sidebar-ring: var(--ring);
+  --brand-lilac: #ede9fe;
+  --brand-pale-blue: #dbeafe;
+  --brand-mint: #d1fae5;
+  --brand-cream: #fef3c7;
+  --brand-pale-yellow: #fef9c3;
+  --font-grift: "Grift";
+  --font-sans: var(--font-grift);
+  --font-serif: var(--font-grift);
+  --font-mono: var(--font-grift);
+  --radius: var(--radius-md);
+  --shadow-2xs: var(--shadow-sm);
+  --shadow-xs: var(--shadow-sm);
+  --shadow: var(--shadow-sm);
+  --shadow-xl: 0 16px 36px rgba(15, 23, 42, 0.14);
+  --shadow-2xl: 0 24px 48px rgba(15, 23, 42, 0.2);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --font-sans: var(--font-grift);
+  --font-mono: var(--font-grift);
+  --color-brand-lilac: var(--brand-lilac);
+  --color-brand-pale-blue: var(--brand-pale-blue);
+  --color-brand-mint: var(--brand-mint);
+  --color-brand-cream: var(--brand-cream);
+  --color-brand-pale-yellow: var(--brand-pale-yellow);
+  --radius-sm: calc(var(--radius) - 8px);
+  --radius-md: calc(var(--radius) - 4px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+.dark {
+  --color-bg: #090d1a;
+  --color-bg-alt: #0d1327;
+  --color-primary: #2f67f6;
+  --color-secondary: #8684ff;
+  --color-accent: #22b8ff;
+  --color-dark: #060912;
+  --color-muted: #9aa7c0;
+  --color-text: #e9eefc;
+  --color-text-light: #9aa7c0;
+  --color-text-inverse: #f4f8ff;
+  --border-color: rgba(122, 150, 214, 0.35);
+  --input-bg: rgba(8, 19, 52, 0.65);
+  --card-bg: rgba(9, 18, 45, 0.82);
+  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 10px 26px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 24px 50px rgba(0, 0, 0, 0.65);
+
+  --background: var(--color-bg);
+  --foreground: var(--color-text);
+  --card: var(--card-bg);
+  --card-foreground: var(--color-text);
+  --popover: var(--color-bg-alt);
+  --popover-foreground: var(--color-text);
+  --primary: var(--color-primary);
+  --primary-foreground: var(--color-text-inverse);
+  --secondary: var(--color-secondary);
+  --secondary-foreground: var(--color-text-inverse);
+  --muted: color-mix(in srgb, var(--color-bg-alt) 76%, #132653 24%);
+  --muted-foreground: var(--color-text-light);
+  --accent: var(--color-accent);
+  --accent-foreground: var(--color-text-inverse);
+  --destructive: var(--color-error);
+  --destructive-foreground: #ffffff;
+  --border: var(--border-color);
+  --input: var(--border-color);
+  --ring: color-mix(in srgb, var(--color-primary) 70%, #0b1229 30%);
+  --chart-1: var(--color-primary);
+  --chart-2: var(--color-secondary);
+  --chart-3: var(--color-accent);
+  --chart-4: #38bdf8;
+  --chart-5: #c4b5fd;
+  --sidebar: var(--color-bg-alt);
+  --sidebar-foreground: var(--color-text);
+  --sidebar-primary: var(--color-primary);
+  --sidebar-primary-foreground: var(--color-text-inverse);
+  --sidebar-accent: color-mix(in srgb, var(--color-primary) 20%, transparent);
+  --sidebar-accent-foreground: var(--color-text);
+  --sidebar-border: var(--border-color);
+  --sidebar-ring: var(--ring);
+  --brand-lilac: rgba(237, 233, 254, 0.18);
+  --brand-pale-blue: rgba(219, 234, 254, 0.16);
+  --brand-mint: rgba(209, 250, 229, 0.16);
+  --brand-cream: rgba(254, 243, 199, 0.16);
+  --brand-pale-yellow: rgba(254, 249, 195, 0.16);
+}
+
+/* Transition douce lors du switch de thème (classe temporaire posée par app-providers.tsx) */
+.theme-transitioning,
+.theme-transitioning *,
+.theme-transitioning *::before,
+.theme-transitioning *::after {
+  transition:
+    color 0.35s ease,
+    background-color 0.35s ease,
+    border-color 0.3s ease,
+    fill 0.35s ease,
+    stroke 0.35s ease,
+    box-shadow 0.35s ease,
+    opacity 0.3s ease !important;
+  transition-delay: 0s !important;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-grift);
+  font-weight: 400;
+  font-size: 15px;
+}
+
+html {
+  font-size: 16px;
+}
+
+a {
+  font-family: var(--font-grift);
+}
+
+input::placeholder,
+textarea::placeholder {
+  font-family: var(--font-grift);
+  font-size: 0.95em;
+  font-weight: 500;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-grift);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  font-size: 0.93em;
+}
+
+/* Fonts are loaded from public/fonts with local fallbacks. */
+@font-face {
+  font-family: "Grift";
+  src:
+    url("/fonts/grift/grift-regular.otf") format("opentype"),
+    local("Grift");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Grift";
+  src:
+    url("/fonts/grift/grift-medium.otf") format("opentype"),
+    local("Grift Medium"),
+    local("Grift");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Grift";
+  src:
+    url("/fonts/grift/grift-semibold.otf") format("opentype"),
+    local("Grift SemiBold"),
+    local("Grift");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Grift";
+  src:
+    url("/fonts/grift/grift-bold.otf") format("opentype"),
+    local("Grift Bold"),
+    local("Grift");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+
+.auth-typography,
+.admin-typography {
+  font-family: var(--font-grift);
+  font-size: 0.95rem;
+  line-height: 1.45;
+  font-weight: 400;
+}
+
+.auth-typography p,
+.auth-typography a,
+.auth-typography label,
+.auth-typography button,
+.auth-typography input,
+.auth-typography textarea,
+.auth-typography select,
+.auth-typography span,
+.auth-typography li,
+.auth-typography div,
+.admin-typography p,
+.admin-typography a,
+.admin-typography label,
+.admin-typography button,
+.admin-typography input,
+.admin-typography textarea,
+.admin-typography select,
+.admin-typography span,
+.admin-typography li,
+.admin-typography td,
+.admin-typography th,
+.admin-typography div {
+  font-family: var(--font-grift) !important;
+  font-weight: 400;
+}
+
+.auth-typography label,
+.admin-typography label {
+  font-weight: 500;
+}
+
+.auth-typography button,
+.admin-typography button {
+  font-weight: 500;
+}
+
+.auth-typography input::placeholder,
+.auth-typography textarea::placeholder,
+.admin-typography input::placeholder,
+.admin-typography textarea::placeholder {
+  font-family: var(--font-grift) !important;
+  font-weight: 500;
+}
+
+.auth-typography h1,
+.auth-typography h2,
+.auth-typography h3,
+.auth-typography h4,
+.auth-typography h5,
+.auth-typography h6,
+.admin-typography h1,
+.admin-typography h2,
+.admin-typography h3,
+.admin-typography h4,
+.admin-typography h5,
+.admin-typography h6 {
+  font-family: var(--font-grift);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.hero-gradient {
+  background:
+    radial-gradient(circle at 12% 18%, color-mix(in srgb, var(--color-primary) 28%, transparent) 0%, transparent 35%),
+    radial-gradient(circle at 85% 20%, color-mix(in srgb, var(--color-secondary) 30%, transparent) 0%, transparent 38%),
+    radial-gradient(circle at 70% 78%, color-mix(in srgb, var(--color-accent) 26%, transparent) 0%, transparent 36%),
+    linear-gradient(145deg, color-mix(in srgb, var(--background) 88%, #ffffff 12%), var(--background));
+}
+
+.auth-screen {
+  position: relative;
+  background:
+    radial-gradient(circle at 18% 14%, color-mix(in srgb, var(--color-primary) 22%, transparent) 0%, transparent 36%),
+    radial-gradient(circle at 83% 86%, color-mix(in srgb, var(--color-secondary) 20%, transparent) 0%, transparent 38%),
+    linear-gradient(165deg, color-mix(in srgb, var(--background) 92%, #ffffff 8%) 0%, color-mix(in srgb, var(--background) 96%, #0a1124 4%) 100%);
+}
+
+.dark .auth-screen {
+  background:
+    radial-gradient(circle at 18% 14%, color-mix(in srgb, var(--color-primary) 30%, transparent) 0%, transparent 38%),
+    radial-gradient(circle at 83% 86%, color-mix(in srgb, var(--color-secondary) 28%, transparent) 0%, transparent 40%),
+    linear-gradient(165deg, #0a1023 0%, #0a0a16 100%);
+}
+
+.auth-square {
+  position: absolute;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--card) 78%, transparent 22%);
+  border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
+  opacity: 0.62;
+}
+
+.dark .auth-square {
+  background: color-mix(in srgb, var(--card) 42%, transparent 58%);
+  border-color: color-mix(in srgb, var(--border) 70%, transparent);
+  opacity: 0.48;
+}
+
+* {
+  transition: var(--transition);
+}
+
+.dark [data-tooltip]::before {
+  border-color: color-mix(in srgb, var(--card) 84%, #0a1026 16%) transparent transparent transparent;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.48));
+}
+
+.dark [data-tooltip]::after {
+  border-color: color-mix(in srgb, var(--primary) 36%, var(--border) 64%);
+  background:
+    linear-gradient(160deg, color-mix(in srgb, var(--primary) 30%, transparent), transparent 50%),
+    color-mix(in srgb, var(--card) 92%, #050913 8%);
+  color: color-mix(in srgb, var(--foreground) 95%, #ffffff 5%);
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.52), 0 6px 12px rgba(0, 0, 0, 0.35);
+}
