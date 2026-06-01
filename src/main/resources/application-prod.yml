@@ -1,0 +1,54 @@
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 25
+  jpa:
+    show-sql: false
+  mail:
+    host: ${MAIL_HOST}
+    port: ${MAIL_PORT}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH}
+          starttls:
+            enable: ${MAIL_SMTP_STARTTLS}
+          connectiontimeout: ${MAIL_SMTP_CONNECTION_TIMEOUT_MS}
+          timeout: ${MAIL_SMTP_TIMEOUT_MS}
+          writetimeout: ${MAIL_SMTP_WRITE_TIMEOUT_MS}
+
+security:
+  jwt:
+    secret: ${JWT_SECRET}
+
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS}
+
+app:
+  mail:
+    from: ${MAIL_FROM}
+  portal:
+    login-url: ${PORTAL_LOGIN_URL}
+    password-reset-base-url: ${PASSWORD_RESET_BASE_URL}
+    operator-password-setup-base-url: ${OPERATOR_PASSWORD_SETUP_BASE_URL}
+  email:
+    verification-base-url: ${EMAIL_VERIFICATION_BASE_URL}
+  notifications:
+    mail:
+      enabled: ${NOTIF_MAIL_ENABLED}
+      fail-on-error: ${PASSWORD_RESET_FAIL_ON_EMAIL_ERROR:false}
+      recipient: ${NOTIF_MAIL_RECIPIENT:}
+      stage-recipient: ${NOTIF_MAIL_STAGE_RECIPIENT:}
+    websocket:
+      enabled: ${NOTIF_WEBSOCKET_ENABLED}
+
+logging:
+  level:
+    root: WARN
+    com.aerixa: INFO
+    org.springframework.security: WARN

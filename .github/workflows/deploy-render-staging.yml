@@ -1,0 +1,68 @@
+name: Validate api for Render (staging)
+
+on:
+  push:
+    branches:
+      - api/staging
+    paths:
+      - "api/**"
+      - "api/.github/workflows/deploy-render-staging.yml"
+      - "api/docs/deployment/RENDER_STAGING_SETUP.md"
+      - "api/docs/deployment/GITHUB_STAGING_SETUP.md"
+      - "api/Dockerfile"
+      - "api/.dockerignore"
+  workflow_dispatch:
+
+concurrency:
+  group: render-staging-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate-api-staging:
+    runs-on: ubuntu-latest
+    environment: staging
+
+    defaults:
+      run:
+        shell: bash
+
+    env:
+      RENDER_STAGING_BASE_URL: ${{ vars.RENDER_STAGING_BASE_URL }}
+      RENDER_STAGING_HEALTHCHECK_PATH: ${{ vars.RENDER_STAGING_HEALTHCHECK_PATH }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Docker image build (pre-deploy validation)
+        run: |
+          docker build -f api/Dockerfile -t aerixa-api:staging .
+
+      - name: Explain deployment mode
+        run: |
+          echo "Docker validation OK."
+          echo "Deployment is handled by Render Auto-Deploy on branch api/staging."
+          echo "Ensure Render service uses Dockerfile Path api/Dockerfile and Build Context api/."
+
+      - name: Wait for service warmup
+        run: sleep 30
+
+      - name: Optional health check
+        if: ${{ vars.RENDER_STAGING_BASE_URL != '' && vars.RENDER_STAGING_HEALTHCHECK_PATH != '' }}
+        run: |
+          HEALTHCHECK_URL="${RENDER_STAGING_BASE_URL%/}${RENDER_STAGING_HEALTHCHECK_PATH}"
+          echo "Running health check on ${HEALTHCHECK_URL}"
+          # Render Hobby can have slower cold starts; keep a larger retry window.
+          for i in {1..20}; do
+            if curl --fail --silent --show-error "${HEALTHCHECK_URL}" > /dev/null; then
+              echo "Health check OK"
+              exit 0
+            fi
+            echo "Health check retry ${i}/20"
+            sleep 15
+          done
+          echo "Health check failed"
+          exit 1
