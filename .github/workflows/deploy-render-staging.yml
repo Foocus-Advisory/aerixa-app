@@ -5,12 +5,15 @@ on:
     branches:
       - api/staging
     paths:
-      - "api/**"
-      - "api/.github/workflows/deploy-render-staging.yml"
-      - "api/docs/deployment/RENDER_STAGING_SETUP.md"
-      - "api/docs/deployment/GITHUB_STAGING_SETUP.md"
-      - "api/Dockerfile"
-      - "api/.dockerignore"
+      - "src/**"
+      - "pom.xml"
+      - "mvnw"
+      - ".mvn/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - ".github/workflows/deploy-render-staging.yml"
+      - "docs/deployment/RENDER_STAGING_SETUP.md"
+      - "docs/deployment/GITHUB_STAGING_SETUP.md"
   workflow_dispatch:
 
 concurrency:
@@ -39,13 +42,13 @@ jobs:
 
       - name: Validate Docker image build (pre-deploy validation)
         run: |
-          docker build -f api/Dockerfile -t aerixa-api:staging .
+          docker build -f Dockerfile -t aerixa-api:staging .
 
       - name: Explain deployment mode
         run: |
           echo "Docker validation OK."
           echo "Deployment is handled by Render Auto-Deploy on branch api/staging."
-          echo "Ensure Render service uses Dockerfile Path api/Dockerfile and Build Context api/."
+          echo "Ensure Render service uses Dockerfile Path ./Dockerfile and Build Context ./."
 
       - name: Wait for service warmup
         run: sleep 30
