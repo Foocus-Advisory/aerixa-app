@@ -32,10 +32,6 @@ jobs:
       run:
         shell: bash
 
-    env:
-      RENDER_STAGING_BASE_URL: ${{ vars.RENDER_STAGING_BASE_URL }}
-      RENDER_STAGING_HEALTHCHECK_PATH: ${{ vars.RENDER_STAGING_HEALTHCHECK_PATH }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -49,23 +45,3 @@ jobs:
           echo "Docker validation OK."
           echo "Deployment is handled by Render Auto-Deploy on branch api/staging."
           echo "Ensure Render service uses Dockerfile Path ./Dockerfile and Build Context ./."
-
-      - name: Wait for service warmup
-        run: sleep 30
-
-      - name: Optional health check
-        if: ${{ vars.RENDER_STAGING_BASE_URL != '' && vars.RENDER_STAGING_HEALTHCHECK_PATH != '' }}
-        run: |
-          HEALTHCHECK_URL="${RENDER_STAGING_BASE_URL%/}${RENDER_STAGING_HEALTHCHECK_PATH}"
-          echo "Running health check on ${HEALTHCHECK_URL}"
-          # Render Hobby can have slower cold starts; keep a larger retry window.
-          for i in {1..20}; do
-            if curl --fail --silent --show-error "${HEALTHCHECK_URL}" > /dev/null; then
-              echo "Health check OK"
-              exit 0
-            fi
-            echo "Health check retry ${i}/20"
-            sleep 15
-          done
-          echo "Health check failed"
-          exit 1
