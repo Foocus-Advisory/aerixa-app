@@ -62,7 +62,9 @@ export function GoogleAuthButton({ locale, mode, onSuccess, buttonWidth = 360, c
   const t = dictionaries[locale];
   const googleLocale = locale === "fr" ? "fr" : "en";
 
-  onSuccessRef.current = onSuccess;
+  useEffect(() => {
+    onSuccessRef.current = onSuccess;
+  }, [onSuccess]);
 
   const configQuery = useQuery({
     queryKey: ["google-auth-config"],
@@ -84,7 +86,9 @@ export function GoogleAuthButton({ locale, mode, onSuccess, buttonWidth = 360, c
   });
 
   const mutateRef = useRef(authMutation.mutate);
-  mutateRef.current = authMutation.mutate;
+  useEffect(() => {
+    mutateRef.current = authMutation.mutate;
+  }, [authMutation.mutate]);
 
   useEffect(() => {
     if (!configQuery.data?.enabled || !configQuery.data.clientId || !containerRef.current) {

@@ -1274,10 +1274,10 @@ export function AcademicLevelsPanel({ accessToken, locale }: ConfigSectionPanelP
   });
   const items = query.data ?? [];
   const rows = items.map((item) => [
-    <span className="font-mono text-xs">{item.code}</span>,
+    <span key="code" className="font-mono text-xs">{item.code}</span>,
     item.label,
     item.rankOrder ?? "—",
-    <Badge variant={item.active ? "success" : "outline"}>{item.active ? (locale === "fr" ? "Actif" : "Active") : (locale === "fr" ? "Inactif" : "Inactive")}</Badge>,
+    <Badge key="status" variant={item.active ? "success" : "outline"}>{item.active ? (locale === "fr" ? "Actif" : "Active") : (locale === "fr" ? "Inactif" : "Inactive")}</Badge>,
   ]);
 
   return (
@@ -1325,10 +1325,10 @@ export function ProgramTracksPanel({ accessToken, locale }: ConfigSectionPanelPr
   });
   const items = query.data ?? [];
   const rows = items.map((item) => [
-    <span className="font-mono text-xs">{item.code}</span>,
+    <span key="code" className="font-mono text-xs">{item.code}</span>,
     item.name,
     item.description ?? "—",
-    <Badge variant={item.active ? "success" : "outline"}>{item.active ? (locale === "fr" ? "Actif" : "Active") : (locale === "fr" ? "Inactif" : "Inactive")}</Badge>,
+    <Badge key="status" variant={item.active ? "success" : "outline"}>{item.active ? (locale === "fr" ? "Actif" : "Active") : (locale === "fr" ? "Inactif" : "Inactive")}</Badge>,
   ]);
 
   return (
@@ -1396,9 +1396,9 @@ export function ProgramTrackLevelsPanel({ accessToken, locale }: ConfigSectionPa
 
   const items = query.data ?? [];
   const rows = items.map((item) => [
-    tracksMap[item.programTrackId] ?? <span className="font-mono text-xs text-muted-foreground">{item.programTrackId.slice(0, 8)}…</span>,
-    levelsMap[item.academicLevelId] ?? <span className="font-mono text-xs text-muted-foreground">{item.academicLevelId.slice(0, 8)}…</span>,
-    <Badge variant={item.openForApplication ? "success" : "outline"}>
+    tracksMap[item.programTrackId] ?? <span key="track" className="font-mono text-xs text-muted-foreground">{item.programTrackId.slice(0, 8)}…</span>,
+    levelsMap[item.academicLevelId] ?? <span key="level" className="font-mono text-xs text-muted-foreground">{item.academicLevelId.slice(0, 8)}…</span>,
+    <Badge key="status" variant={item.openForApplication ? "success" : "outline"}>
       {item.openForApplication ? (locale === "fr" ? "Ouvert" : "Open") : (locale === "fr" ? "Ferme" : "Closed")}
     </Badge>,
   ]);
@@ -1448,10 +1448,10 @@ export function AcquisitionChannelsPanel({ accessToken, locale }: ConfigSectionP
   });
   const items = query.data ?? [];
   const rows = items.map((item) => [
-    <span className="font-mono text-xs">{item.code}</span>,
+    <span key="code" className="font-mono text-xs">{item.code}</span>,
     item.name,
     item.type ?? "—",
-    <Badge variant={item.active ? "success" : "outline"}>{item.active ? (locale === "fr" ? "Actif" : "Active") : (locale === "fr" ? "Inactif" : "Inactive")}</Badge>,
+    <Badge key="status" variant={item.active ? "success" : "outline"}>{item.active ? (locale === "fr" ? "Actif" : "Active") : (locale === "fr" ? "Inactif" : "Inactive")}</Badge>,
   ]);
 
   return (
@@ -1499,11 +1499,11 @@ export function FunnelStagesPanel({ accessToken, locale }: ConfigSectionPanelPro
   });
   const items = query.data ?? [];
   const rows = items.map((item) => [
-    <span className="font-mono text-xs">{item.code}</span>,
+    <span key="code" className="font-mono text-xs">{item.code}</span>,
     item.name,
     item.stageType ?? "—",
     item.positionOrder ?? "—",
-    <Badge variant={item.active ? "success" : "outline"}>{item.active ? (locale === "fr" ? "Actif" : "Active") : (locale === "fr" ? "Inactif" : "Inactive")}</Badge>,
+    <Badge key="status" variant={item.active ? "success" : "outline"}>{item.active ? (locale === "fr" ? "Actif" : "Active") : (locale === "fr" ? "Inactif" : "Inactive")}</Badge>,
   ]);
 
   return (
@@ -1562,10 +1562,10 @@ export function FunnelStageTransitionsPanel({ accessToken, locale }: ConfigSecti
 
   const items = query.data ?? [];
   const rows = items.map((item) => [
-    stagesMap[item.fromStageId] ?? <span className="font-mono text-xs text-muted-foreground">{item.fromStageId.slice(0, 8)}…</span>,
+    stagesMap[item.fromStageId] ?? <span key="from" className="font-mono text-xs text-muted-foreground">{item.fromStageId.slice(0, 8)}…</span>,
     "→",
-    stagesMap[item.toStageId] ?? <span className="font-mono text-xs text-muted-foreground">{item.toStageId.slice(0, 8)}…</span>,
-    <Badge variant={item.active ? "success" : "outline"}>{item.active ? (locale === "fr" ? "Actif" : "Active") : (locale === "fr" ? "Inactif" : "Inactive")}</Badge>,
+    stagesMap[item.toStageId] ?? <span key="to" className="font-mono text-xs text-muted-foreground">{item.toStageId.slice(0, 8)}…</span>,
+    <Badge key="status" variant={item.active ? "success" : "outline"}>{item.active ? (locale === "fr" ? "Actif" : "Active") : (locale === "fr" ? "Inactif" : "Inactive")}</Badge>,
   ]);
 
   return (
