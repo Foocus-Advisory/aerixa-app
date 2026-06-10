@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { AuthShell } from "@/components/auth/auth-shell";
@@ -11,6 +11,14 @@ import { api } from "@/lib/api";
 import { useDashboardStore } from "@/store/dashboard-store";
 
 export default function MfaLoginPage() {
+  return (
+    <Suspense>
+      <MfaLoginPageContent />
+    </Suspense>
+  );
+}
+
+function MfaLoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { setTokens, unlockSession, setUnlockingInProgress, preLockPath } = useDashboardStore();

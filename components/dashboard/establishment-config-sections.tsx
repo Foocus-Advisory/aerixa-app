@@ -841,7 +841,7 @@ export function EstablishmentsPanel({ accessToken, locale }: ConfigSectionPanelP
                           icon: Trash2,
                           onClick: () => deleteEstablishmentMutation.mutate(item.id),
                           disabled: !canDeleteEstablishment || deleteEstablishmentMutation.isPending,
-                          className: "text-destructive",
+                          variant: "destructive",
                         },
                         item.status === "ACTIVE" ? {
                           label: locale === "fr" ? "Désactiver" : "Deactivate",
@@ -939,7 +939,7 @@ export function EstablishmentsPanel({ accessToken, locale }: ConfigSectionPanelP
                               icon: Trash2,
                               onClick: () => deleteEstablishmentMutation.mutate(item.id),
                               disabled: !canDeleteEstablishment || deleteEstablishmentMutation.isPending,
-                              className: "text-destructive",
+                              variant: "destructive",
                             },
                             item.status === "ACTIVE" ? {
                               label: locale === "fr" ? "Désactiver" : "Deactivate",

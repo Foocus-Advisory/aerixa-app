@@ -334,6 +334,9 @@ export function AdminDashboard() {
   const loginMutation = useMutation({
     mutationFn: () => api.auth.login(loginForm),
     onSuccess: (data) => {
+      if (!data.accessToken || !data.refreshToken) {
+        return;
+      }
       setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
       appendLog(`LOGIN OK: ${data.user.email}`);
     },
@@ -357,6 +360,9 @@ export function AdminDashboard() {
   const refreshMutation = useMutation({
     mutationFn: () => api.auth.refresh(refreshToken),
     onSuccess: (data) => {
+      if (!data.accessToken || !data.refreshToken) {
+        return;
+      }
       setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
       appendLog("REFRESH OK");
     },
@@ -435,7 +441,7 @@ export function AdminDashboard() {
       "security-permissions",
       "mail-template",
       "settings-profile",
-      ...(canReadConfiguration ? ["settings-configuration"] : []),
+      ...(canReadConfiguration ? (["settings-configuration"] as const) : []),
       "settings-notifications",
       "settings-audit",
     ]);
