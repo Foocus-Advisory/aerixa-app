@@ -91,7 +91,8 @@ export function GoogleAuthButton({ locale, mode, onSuccess, buttonWidth = 360, c
   }, [authMutation.mutate]);
 
   useEffect(() => {
-    if (!configQuery.data?.enabled || !configQuery.data.clientId || !containerRef.current) {
+    const clientId = configQuery.data?.clientId;
+    if (!configQuery.data?.enabled || !clientId || !containerRef.current) {
       return;
     }
 
@@ -102,9 +103,9 @@ export function GoogleAuthButton({ locale, mode, onSuccess, buttonWidth = 360, c
 
       containerRef.current.innerHTML = "";
 
-      if (window.__aerixaGoogleInitializedClientId !== configQuery.data.clientId) {
+      if (window.__aerixaGoogleInitializedClientId !== clientId) {
         window.google.accounts.id.initialize({
-          client_id: configQuery.data.clientId,
+          client_id: clientId,
           callback: ({ credential }) => {
             if (!credential) {
               toast({
@@ -121,7 +122,7 @@ export function GoogleAuthButton({ locale, mode, onSuccess, buttonWidth = 360, c
           auto_select: false,
           cancel_on_tap_outside: true,
         });
-        window.__aerixaGoogleInitializedClientId = configQuery.data.clientId;
+        window.__aerixaGoogleInitializedClientId = clientId;
       }
 
       window.google.accounts.id.renderButton(containerRef.current, {

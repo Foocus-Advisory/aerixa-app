@@ -118,7 +118,8 @@ function UserAvatarCell({ user, accessToken, initials, gradientClass, fullName }
   const [photoFailed, setPhotoFailed] = useState(false);
 
   useEffect(() => {
-    if (!user.profilePhotoUrl || !accessToken || photoFailed) {
+    const profilePhotoUrl = user.profilePhotoUrl;
+    if (!profilePhotoUrl || !accessToken || photoFailed) {
       return;
     }
 
@@ -127,7 +128,7 @@ function UserAvatarCell({ user, accessToken, initials, gradientClass, fullName }
 
     (async () => {
       try {
-        const blob = await api.users.getProfilePhotoBlob(accessToken, user.profilePhotoUrl);
+        const blob = await api.users.getProfilePhotoBlob(accessToken, profilePhotoUrl);
         if (!isMounted) return;
         objectUrl = URL.createObjectURL(blob);
         setPhotoUrl(objectUrl);

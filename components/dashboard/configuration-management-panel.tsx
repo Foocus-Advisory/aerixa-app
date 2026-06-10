@@ -307,7 +307,7 @@ export function ConfigurationManagementPanel({ accessToken, locale, onLog }: Con
                   <div key={counter.labelEn} className="rounded-xl border border-border/70 bg-background/80 p-3">
                     <p className="text-xs text-muted-foreground">{locale === "fr" ? counter.labelFr : counter.labelEn}</p>
                     <p className="mt-1 text-2xl font-semibold">{counter.value}</p>
-                    {counter.isError ? <Badge variant="destructive">{locale === "fr" ? "Erreur" : "Error"}</Badge> : null}
+                    {counter.isError ? <Badge variant="danger">{locale === "fr" ? "Erreur" : "Error"}</Badge> : null}
                   </div>
                 ))}
               </div>

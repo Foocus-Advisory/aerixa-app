@@ -36,6 +36,7 @@ export type AppPermission =
   | "establishments:update"
   | "establishments:activate"
   | "establishments:deactivate"
+  | "establishments:delete"
   | "entry_diplomas:list"
   | "entry_diplomas:read"
   | "entry_diplomas:create"
@@ -143,6 +144,7 @@ const ROLE_FALLBACK_PERMISSIONS: Record<string, AppPermission[]> = {
     "establishments:update",
     "establishments:activate",
     "establishments:deactivate",
+    "establishments:delete",
     "entry_diplomas:list",
     "entry_diplomas:read",
     "entry_diplomas:create",
@@ -245,6 +247,7 @@ const ROLE_FALLBACK_PERMISSIONS: Record<string, AppPermission[]> = {
     "establishments:update",
     "establishments:activate",
     "establishments:deactivate",
+    "establishments:delete",
     "entry_diplomas:list",
     "entry_diplomas:read",
     "entry_diplomas:create",
