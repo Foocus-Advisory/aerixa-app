@@ -1,13 +1,10 @@
 import type {
   ApiSuccessResponse,
-  CreateUserRequest,
   LoginRequest,
   LoginResponse,
-  PagedResponse,
   PasswordResetRequestResult,
   RegisterRequest,
   RegisterResponse,
-  UserResponse,
 } from "./types";
 
 class ApiError extends Error {
@@ -98,35 +95,6 @@ export const api = {
         "POST",
         { email }
       ).then((response) => response?.data),
-  },
-
-  users: {
-    get: (token: string) =>
-      apiRequest<PagedResponse<UserResponse>>("/api/v1/users", "GET", undefined, token),
-
-    create: (token: string, payload: CreateUserRequest) =>
-      apiRequest<ApiSuccessResponse<UserResponse>>(
-        "/api/v1/users",
-        "POST",
-        payload,
-        token
-      ).then((response) => {
-        if (!response?.data) {
-          throw new Error("Reponse de creation utilisateur invalide");
-        }
-        return response.data;
-      }),
-
-    delete: (token: string, userId: string) =>
-      apiRequest<void>(`/api/v1/users/${userId}`, "DELETE", undefined, token),
-
-    update: (token: string, userId: string, payload: Partial<UserResponse>) =>
-      apiRequest<UserResponse>(
-        `/api/v1/users/${userId}`,
-        "PUT",
-        payload,
-        token
-      ),
   },
 
   mailTemplates: {

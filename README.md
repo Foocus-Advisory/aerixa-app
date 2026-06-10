@@ -77,3 +77,17 @@ npm run build
 ```
 
 Les deux commandes passent actuellement.
+
+## Self Data Policy
+
+Règles obligatoires pour les données utilisateur:
+
+- Les données du compte connecté doivent passer par des endpoints self (`/me`) et non par un listing global filtré côté client.
+- Le endpoint `/api/v1/users` est réservé aux vues de gestion utilisateurs où la liste est réellement nécessaire.
+- Pour les filtres/listes de sélection (sessions, dropdowns), privilégier des endpoints minimaux (ex: `/api/v1/users/options`).
+- Le client principal pour les opérations utilisateurs est `lib/api.ts`. Ne pas réintroduire de surface users dans les clients spécialisés.
+
+Contrôle de revue:
+
+- Rejeter toute PR qui ajoute un pattern `list users + find/filter` pour reconstruire l'utilisateur courant.
+- Rejeter toute PR qui utilise `/api/v1/users` dans une vue non-admin pour afficher des données self.

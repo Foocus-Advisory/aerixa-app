@@ -11,15 +11,16 @@ interface DropdownMenuProps {
     label: string;
     onClick: () => void;
     disabled?: boolean;
-    variant?: "default" | "destructive";
+    variant?: "default" | "destructive" | "active";
     icon?: React.ComponentType<{ className?: string }>;
   }>;
   className?: string;
   triggerClassName?: string;
   triggerTooltip?: string;
+  triggerIcon?: React.ComponentType<{ className?: string }>;
 }
 
-export function DropdownMenu({ items, className, triggerClassName, triggerTooltip }: DropdownMenuProps) {
+export function DropdownMenu({ items, className, triggerClassName, triggerTooltip, triggerIcon }: DropdownMenuProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -97,6 +98,8 @@ export function DropdownMenu({ items, className, triggerClassName, triggerToolti
     };
   }, [open]);
 
+  const TriggerIcon = triggerIcon ?? MoreVertical;
+
   return (
     <div ref={ref} className={cn("relative", className)}>
       <AppTooltip content={triggerTooltip} side="left">
@@ -107,7 +110,7 @@ export function DropdownMenu({ items, className, triggerClassName, triggerToolti
           className={triggerClassName}
           aria-label="Menu"
         >
-          <MoreVertical className="h-4 w-4" />
+          <TriggerIcon className="h-4 w-4" />
         </Button>
       </AppTooltip>
 
@@ -135,7 +138,9 @@ export function DropdownMenu({ items, className, triggerClassName, triggerToolti
                   "w-full px-3 py-2 text-left text-sm font-medium transition-colors first:rounded-t-md last:rounded-b-md disabled:pointer-events-none disabled:opacity-50",
                   item.variant === "destructive"
                     ? "text-destructive hover:bg-destructive/10"
-                    : "text-foreground hover:bg-muted",
+                    : item.variant === "active"
+                      ? "bg-primary/10 text-primary hover:bg-primary/15"
+                      : "text-foreground hover:bg-muted",
                 )}
               >
                 <span className="inline-flex items-center gap-2">

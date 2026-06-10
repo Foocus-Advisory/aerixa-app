@@ -13,7 +13,7 @@ import { useInactivityLock } from "@/hooks/use-inactivity-lock";
  */
 export function TokenManager({ children }: { children: React.ReactNode }) {
   const loadTokensFromStorage = useDashboardStore((state) => state.loadTokensFromStorage);
-  const { sessionLocked, accessToken } = useDashboardStore();
+  const { sessionLocked, accessToken, isUnlockingInProgress, setPreLockPath } = useDashboardStore();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -25,7 +25,7 @@ export function TokenManager({ children }: { children: React.ReactNode }) {
   // Activer la détection d'inactivité
   useInactivityLock();
 
-  // Rediriger vers session-locked si verrouillé
+  // Rediriger vers session-locked si verrouillé (sauf si en cours de déverrouillage)
   useEffect(() => {
     const publicRoutes = ["/login", "/register", "/forgot-password", "/define-password", "/reset-password", "/", "/session-locked"];
     const isLocalizedResetPassword = /^\/(fr|en)\/reset-password$/.test(pathname);
@@ -33,12 +33,14 @@ export function TokenManager({ children }: { children: React.ReactNode }) {
     if (
       sessionLocked &&
       accessToken &&
+      !isUnlockingInProgress &&
       !publicRoutes.includes(pathname) &&
       !isLocalizedResetPassword
     ) {
-      router.replace("/session-locked");
+      setPreLockPath(pathname);
+      router.push("/session-locked");
     }
-  }, [sessionLocked, accessToken, pathname, router]);
+  }, [sessionLocked, accessToken, isUnlockingInProgress, pathname, router]);
 
   return <>{children}</>;
 }

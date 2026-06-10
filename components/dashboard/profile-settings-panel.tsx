@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Camera,
@@ -22,7 +22,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useToast } from "@/components/ui/toast-provider";
+import { phonePrefixes } from "@/lib/phone-prefixes";
 
 type ProfileSettingsPanelProps = {
   accessToken: string;
@@ -52,6 +55,38 @@ function readFileAsDataUrl(file: File) {
   });
 }
 
+function splitPhoneNumber(value: string) {
+  const normalized = (value ?? "").replace(/\s+/g, "").trim();
+  const sortedPrefixes = [...phonePrefixes].sort((a, b) => b.value.length - a.value.length);
+  const detectedPrefix = sortedPrefixes.find((item) => normalized.startsWith(item.value));
+
+  if (!detectedPrefix) {
+    return { prefix: "+237", local: normalized };
+  }
+
+  return {
+    prefix: detectedPrefix.value,
+    local: normalized.slice(detectedPrefix.value.length),
+  };
+}
+
+function resolveProfilePhotoUrl(rawUrl: string | undefined) {
+  const normalized = (rawUrl ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  if (/^(data:|blob:)/i.test(normalized)) {
+    return normalized;
+  }
+
+  if (/^https?:\/\//i.test(normalized)) {
+    return normalized;
+  }
+
+  return "";
+}
+
 export function ProfileSettingsPanel({ accessToken, locale, onLog }: ProfileSettingsPanelProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -62,6 +97,7 @@ export function ProfileSettingsPanel({ accessToken, locale, onLog }: ProfileSett
 
   const [serverDraft, setServerDraft] = useState<Partial<UpdateProfileRequest>>({});
   const [avatarPreview, setAvatarPreview] = useState("");
+  const [persistedAvatarUrl, setPersistedAvatarUrl] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -70,6 +106,12 @@ export function ProfileSettingsPanel({ accessToken, locale, onLog }: ProfileSett
     queryKey: ["settings-profile", userId || userEmail],
     enabled: Boolean(accessToken && (userId || userEmail)),
     queryFn: () => api.users.getMe(accessToken),
+  });
+
+  const locationOptionsQuery = useQuery({
+    queryKey: ["profile-location-options"],
+    enabled: Boolean(accessToken),
+    queryFn: () => api.users.getProfileLocationOptions(accessToken),
   });
 
   const currentUser = profileQuery.data ?? null;
@@ -86,6 +128,50 @@ export function ProfileSettingsPanel({ accessToken, locale, onLog }: ProfileSett
     bio: serverDraft.bio ?? currentUser?.bio ?? "",
   };
 
+  const { prefix: selectedPhonePrefix, local: localPhoneNumber } = splitPhoneNumber(mergedProfile.phoneNumber);
+
+  const countryOptions = useMemo(() => {
+    const base = (locationOptionsQuery.data ?? []).map((country) => ({
+      value: country.name,
+      label: country.name,
+      keywords: [country.code.toLowerCase(), country.name.toLowerCase()],
+    }));
+
+    const currentCountry = mergedProfile.country.trim();
+    if (currentCountry && !base.some((item) => item.value.toLowerCase() === currentCountry.toLowerCase())) {
+      base.push({
+        value: currentCountry,
+        label: currentCountry,
+        keywords: [currentCountry.toLowerCase()],
+      });
+    }
+
+    return base;
+  }, [locationOptionsQuery.data, mergedProfile.country]);
+
+  const cityOptions = useMemo(() => {
+    const selectedCountry = (locationOptionsQuery.data ?? []).find(
+      (country) => country.name.toLowerCase() === mergedProfile.country.trim().toLowerCase(),
+    );
+
+    const base = (selectedCountry?.cities ?? []).map((city) => ({
+      value: city,
+      label: city,
+      keywords: [city.toLowerCase()],
+    }));
+
+    const currentCity = mergedProfile.city.trim();
+    if (currentCity && !base.some((item) => item.value.toLowerCase() === currentCity.toLowerCase())) {
+      base.push({
+        value: currentCity,
+        label: currentCity,
+        keywords: [currentCity.toLowerCase()],
+      });
+    }
+
+    return base;
+  }, [locationOptionsQuery.data, mergedProfile.country, mergedProfile.city]);
+
   const saveProfileMutation = useMutation({
     mutationFn: async () => {
       if (!currentUser) {
@@ -96,7 +182,14 @@ export function ProfileSettingsPanel({ accessToken, locale, onLog }: ProfileSett
         username: mergedProfile.username.trim() || undefined,
         firstName: mergedProfile.firstName.trim() || undefined,
         lastName: mergedProfile.lastName.trim() || undefined,
-        phoneNumber: mergedProfile.phoneNumber.trim() || undefined,
+        phoneNumber: (() => {
+          const trimmed = mergedProfile.phoneNumber.trim();
+          if (!trimmed) {
+            return undefined;
+          }
+          const parsed = splitPhoneNumber(trimmed);
+          return parsed.local ? trimmed : undefined;
+        })(),
         addressLine1: mergedProfile.addressLine1.trim() || undefined,
         addressLine2: mergedProfile.addressLine2.trim() || undefined,
         city: mergedProfile.city.trim() || undefined,
@@ -132,8 +225,9 @@ export function ProfileSettingsPanel({ accessToken, locale, onLog }: ProfileSett
 
   const uploadPhotoMutation = useMutation({
     mutationFn: (file: File) => api.users.uploadMyProfilePhoto(accessToken, file),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["settings-profile", userId || userEmail] });
+    onSuccess: (updatedUser) => {
+      setAvatarPreview("");
+      queryClient.setQueryData(["settings-profile", userId || userEmail], updatedUser);
       toast({
         title: locale === "fr" ? "Photo mise à jour" : "Photo updated",
         description:
@@ -155,9 +249,9 @@ export function ProfileSettingsPanel({ accessToken, locale, onLog }: ProfileSett
 
   const deletePhotoMutation = useMutation({
     mutationFn: () => api.users.deleteMyProfilePhoto(accessToken),
-    onSuccess: () => {
+    onSuccess: (updatedUser) => {
       setAvatarPreview("");
-      queryClient.invalidateQueries({ queryKey: ["settings-profile", userId || userEmail] });
+      queryClient.setQueryData(["settings-profile", userId || userEmail], updatedUser);
     },
   });
 
@@ -183,6 +277,39 @@ export function ProfileSettingsPanel({ accessToken, locale, onLog }: ProfileSett
       });
     },
   });
+
+  useEffect(() => {
+    const profilePhotoPath = currentUser?.profilePhotoUrl?.trim() ?? "";
+    if (!accessToken || !profilePhotoPath) {
+      setPersistedAvatarUrl("");
+      return;
+    }
+
+    let cancelled = false;
+    let localObjectUrl = "";
+
+    api.users
+      .getProfilePhotoBlob(accessToken, profilePhotoPath)
+      .then((blob) => {
+        if (cancelled) {
+          return;
+        }
+        localObjectUrl = URL.createObjectURL(blob);
+        setPersistedAvatarUrl(localObjectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPersistedAvatarUrl("");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      if (localObjectUrl) {
+        URL.revokeObjectURL(localObjectUrl);
+      }
+    };
+  }, [accessToken, currentUser?.profilePhotoUrl]);
 
   const handleResetDraft = () => {
     setServerDraft({});
@@ -229,7 +356,7 @@ export function ProfileSettingsPanel({ accessToken, locale, onLog }: ProfileSett
   }
 
   const initials = computeInitials(currentUser);
-  const effectiveAvatar = avatarPreview || "";
+  const effectiveAvatar = avatarPreview || persistedAvatarUrl || resolveProfilePhotoUrl(currentUser.profilePhotoUrl);
 
   return (
     <section className="grid gap-6">
@@ -305,7 +432,29 @@ export function ProfileSettingsPanel({ accessToken, locale, onLog }: ProfileSett
               </label>
               <label className="grid gap-2 text-sm font-medium md:col-span-2">
                 <span className="inline-flex items-center gap-2"><Phone className="h-4 w-4" /> {locale === "fr" ? "Numéro de téléphone" : "Phone number"}</span>
-                <Input value={mergedProfile.phoneNumber} onChange={(event) => setServerDraft((current) => ({ ...current, phoneNumber: event.target.value }))} placeholder="+237 6 00 00 00 00" />
+                <div className="grid gap-2 sm:grid-cols-[1fr_1.4fr]">
+                  <SearchableSelect
+                    options={phonePrefixes}
+                    value={selectedPhonePrefix}
+                    onValueChange={(prefix) => setServerDraft((current) => ({
+                      ...current,
+                      phoneNumber: `${prefix}${localPhoneNumber}`,
+                    }))}
+                    placeholder={locale === "fr" ? "Indicatif pays" : "Country code"}
+                    searchPlaceholder={locale === "fr" ? "Rechercher un pays" : "Search a country"}
+                  />
+                  <Input
+                    value={localPhoneNumber}
+                    onChange={(event) => {
+                      const sanitized = event.target.value.replace(/\s+/g, "");
+                      setServerDraft((current) => ({
+                        ...current,
+                        phoneNumber: `${selectedPhonePrefix}${sanitized}`,
+                      }));
+                    }}
+                    placeholder="6XXXXXXXX"
+                  />
+                </div>
               </label>
             </CardContent>
           </Card>
@@ -330,7 +479,13 @@ export function ProfileSettingsPanel({ accessToken, locale, onLog }: ProfileSett
               </label>
               <label className="grid gap-2 text-sm font-medium">
                 {locale === "fr" ? "Ville" : "City"}
-                <Input value={mergedProfile.city} onChange={(event) => setServerDraft((current) => ({ ...current, city: event.target.value }))} />
+                <SearchableSelect
+                  options={cityOptions}
+                  value={mergedProfile.city}
+                  onValueChange={(value) => setServerDraft((current) => ({ ...current, city: value }))}
+                  placeholder={locale === "fr" ? "Sélectionner une ville" : "Select a city"}
+                  searchPlaceholder={locale === "fr" ? "Rechercher une ville..." : "Search a city..."}
+                />
               </label>
               <label className="grid gap-2 text-sm font-medium">
                 {locale === "fr" ? "Code postal" : "Postal code"}
@@ -338,7 +493,13 @@ export function ProfileSettingsPanel({ accessToken, locale, onLog }: ProfileSett
               </label>
               <label className="grid gap-2 text-sm font-medium md:col-span-2">
                 {locale === "fr" ? "Pays" : "Country"}
-                <Input value={mergedProfile.country} onChange={(event) => setServerDraft((current) => ({ ...current, country: event.target.value }))} />
+                <SearchableSelect
+                  options={countryOptions}
+                  value={mergedProfile.country}
+                  onValueChange={(value) => setServerDraft((current) => ({ ...current, country: value, city: "" }))}
+                  placeholder={locale === "fr" ? "Sélectionner un pays" : "Select a country"}
+                  searchPlaceholder={locale === "fr" ? "Rechercher un pays..." : "Search a country..."}
+                />
               </label>
               <label className="grid gap-2 text-sm font-medium md:col-span-2">
                 {locale === "fr" ? "Bio / notes" : "Bio / notes"}
@@ -406,15 +567,15 @@ export function ProfileSettingsPanel({ accessToken, locale, onLog }: ProfileSett
             <CardContent className="grid gap-4">
               <label className="grid gap-2 text-sm font-medium">
                 {locale === "fr" ? "Mot de passe actuel" : "Current password"}
-                <Input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
+                <PasswordInput value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
               </label>
               <label className="grid gap-2 text-sm font-medium">
                 {locale === "fr" ? "Nouveau mot de passe" : "New password"}
-                <Input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+                <PasswordInput value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
               </label>
               <label className="grid gap-2 text-sm font-medium">
                 {locale === "fr" ? "Confirmer le nouveau mot de passe" : "Confirm new password"}
-                <Input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
+                <PasswordInput value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
               </label>
               <Button
                 variant="outline"

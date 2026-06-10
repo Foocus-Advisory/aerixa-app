@@ -7,26 +7,16 @@ import { useMutation } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { dictionaries } from "@/lib/i18n";
 import { useDashboardStore } from "@/store/dashboard-store";
+import { GoogleAuthButton } from "@/components/auth/google-auth-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-
-const phonePrefixes = [
-  { label: "🇨🇲 +237", value: "+237", keywords: ["cameroun", "cameroon", "cm", "+237"] },
-  { label: "🇫🇷 +33", value: "+33", keywords: ["france", "fr", "+33"] },
-  { label: "🇧🇪 +32", value: "+32", keywords: ["belgique", "belgium", "be", "+32"] },
-  { label: "🇨🇦 +1", value: "+1", keywords: ["canada", "ca", "+1"] },
-  { label: "🇬🇧 +44", value: "+44", keywords: ["royaume-uni", "uk", "gb", "+44"] },
-  { label: "🇨🇮 +225", value: "+225", keywords: ["cote d'ivoire", "ci", "+225"] },
-  { label: "🇸🇳 +221", value: "+221", keywords: ["senegal", "sn", "+221"] },
-  { label: "🇩🇿 +213", value: "+213", keywords: ["algerie", "algeria", "dz", "+213"] },
-  { label: "🇲🇦 +212", value: "+212", keywords: ["maroc", "morocco", "ma", "+212"] },
-] as const;
+import { phonePrefixes } from "@/lib/phone-prefixes";
 
 export function RegisterForm() {
   const router = useRouter();
-  const { locale } = useDashboardStore();
+  const { locale, setTokens } = useDashboardStore();
   const t = dictionaries[locale];
   const [form, setForm] = useState({
     username: "",
@@ -37,6 +27,22 @@ export function RegisterForm() {
     confirmPassword: "",
   });
   const [feedback, setFeedback] = useState<string | null>(null);
+
+  const handleGoogleSuccess = (data: Awaited<ReturnType<typeof api.auth.googleRegister>>) => {
+    if (data.mfaRequired && data.mfaChallengeId) {
+      router.push(`/login/mfa?challengeId=${data.mfaChallengeId}`);
+      return;
+    }
+
+    if (!data.accessToken || !data.refreshToken) {
+      setFeedback(locale === "fr" ? "La reponse Google est incomplete." : "Google response is incomplete.");
+      return;
+    }
+
+    setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
+    useDashboardStore.getState().setUserEmail(data.user?.email || form.email);
+    router.push("/dashboard");
+  };
 
   const registerMutation = useMutation({
     mutationFn: () => {
@@ -145,6 +151,8 @@ export function RegisterForm() {
       >
         {registerMutation.isPending ? `${t.register}...` : t.register}
       </Button>
+
+      <GoogleAuthButton locale={locale} mode="register" onSuccess={handleGoogleSuccess} />
 
       <p className="text-center text-sm text-muted-foreground">
         {t.authAlreadyAccount} <Link className="text-primary hover:underline" href="/login">{t.authSignInLink}</Link>

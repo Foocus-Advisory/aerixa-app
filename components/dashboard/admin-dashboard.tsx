@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import {
@@ -8,6 +9,7 @@ import {
   Sun,
   Languages,
   ShieldCheck,
+  Check,
   Users,
   KeyRound,
   FileText,
@@ -15,13 +17,22 @@ import {
   Bell,
   Search,
   Filter,
-  CircleUserRound,
+  Trash2,
   Mail,
   Settings,
   X,
+  LogOut,
   UserRound,
   Clock3,
   Lock,
+  Building2,
+  MoreHorizontal,
+  GraduationCap,
+  Award,
+  BookOpen,
+  Layers,
+  Megaphone,
+  GitBranch,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { getAuthErrorToast } from "@/lib/auth-error-toast";
@@ -32,19 +43,25 @@ import { UsersManagementPanel } from "@/components/dashboard/users-management-pa
 import { SessionsManagementPanel } from "@/components/dashboard/sessions-management-panel";
 import { SecurityPermissionsPanel, SecurityRolesPanel } from "@/components/dashboard/security-management-panels";
 import { ProfileSettingsPanel } from "@/components/dashboard/profile-settings-panel";
+import { ConfigurationManagementPanel } from "@/components/dashboard/configuration-management-panel";
+import { EstablishmentsPanel, EntryDiplomasPanel } from "@/components/dashboard/establishment-config-sections";
+import { NotificationsCriticalActions } from "@/components/dashboard/notifications-critical-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { PasswordInput } from "@/components/ui/password-input";
 import { MailTemplatesAdminPanel } from "@/components/admin/mail-templates/mail-templates-admin-panel";
 import { useToast } from "@/components/ui/toast-provider";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { decodeJwt } from "@/lib/jwt-utils";
-import type { LoginRequest, NotificationReadStatus, RegisterRequest } from "@/lib/types";
+import { buildPermissionSet, canAccessTab, firstAccessibleTab, hasPermission, type TabKey } from "@/lib/permissions";
+import { tabToPath } from "@/lib/dashboard-routes";
+import { Breadcrumbs, type BreadcrumbItem } from "@/components/ui/breadcrumbs";
+import type { AuditDashboardSummaryResponse, AuditLogResponse, LoginRequest, NotificationReadStatus, RegisterRequest } from "@/lib/types";
 
 type GlobalSearchItem = {
   id: string;
@@ -70,8 +87,24 @@ type AuditEntry = {
   action: string;
   message: string;
   status: Exclude<AuditStatusFilter, "ALL">;
+  outcome?: string;
+  correlationId?: string;
+  reasonCode?: string;
   raw: string;
 };
+
+const AUDIT_ACTION_OPTIONS = [
+  "LOGIN",
+  "LOGOUT",
+  "REFRESH",
+  "REVOKED",
+  "EXPIRED",
+  "CONFLICT",
+  "CREATE",
+  "UPDATE",
+  "DELETE",
+  "READ",
+] as const;
 
 function formatNotificationDate(value: string | undefined, locale: "fr" | "en") {
   if (!value) {
@@ -94,52 +127,173 @@ function normalizeClaim(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function computeInitials(source: string): string {
-  const normalized = source.trim();
-  if (!normalized) {
-    return "AU";
+function computeInitials(primary: string, fallback?: string): string {
+  const pickInitialsFromSource = (source: string) => {
+    const normalized = source.trim();
+    if (!normalized) {
+      return "";
+    }
+
+    const localPart = normalized.includes("@") ? normalized.split("@")[0] : normalized;
+    const tokens = localPart
+      .split(/[\s._-]+/)
+      .filter(Boolean)
+      .map((token) => token.replace(/[^A-Za-zÀ-ÖØ-öø-ÿ]/g, ""))
+      .filter(Boolean);
+
+    if (tokens.length >= 2) {
+      return `${tokens[0][0]}${tokens[1][0]}`.toUpperCase();
+    }
+
+    if (tokens.length === 1) {
+      return tokens[0].slice(0, 2).toUpperCase();
+    }
+
+    return "";
+  };
+
+  return pickInitialsFromSource(primary) || pickInitialsFromSource(fallback ?? "") || "AU";
+}
+
+function resolveAvatarUrl(rawUrl: string): string {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) {
+    return "";
   }
 
-  const emailLocalPart = normalized.includes("@") ? normalized.split("@")[0] : normalized;
-  const parts = emailLocalPart.split(/[\s._-]+/).filter(Boolean);
-
-  if (parts.length >= 2) {
-    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  if (/^(https?:\/\/|data:|blob:)/i.test(trimmed)) {
+    return trimmed;
   }
 
-  return emailLocalPart.slice(0, 2).toUpperCase();
+  const apiBaseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080").replace(/\/$/, "");
+  return `${apiBaseUrl}${trimmed.startsWith("/") ? "" : "/"}${trimmed}`;
 }
 
 export function AdminDashboard() {
+  const router = useRouter();
   const { theme, setTheme, locale, setLocale, accessToken, refreshToken, setTokens, clearTokens, activeTab, setActiveTab } = useDashboardStore();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const t = dictionaries[locale];
 
-  const connectedUser = useMemo(() => {
-    const payload = accessToken ? decodeJwt(accessToken) : null;
+  const connectedUserTokenPayload = useMemo(
+    () => (accessToken ? decodeJwt(accessToken) : null),
+    [accessToken],
+  );
 
-    const firstName = normalizeClaim(payload?.firstName) || normalizeClaim(payload?.given_name);
-    const lastName = normalizeClaim(payload?.lastName) || normalizeClaim(payload?.family_name);
-    const username = normalizeClaim(payload?.username) || normalizeClaim(payload?.preferred_username);
-    const email = normalizeClaim(payload?.email) || normalizeClaim(payload?.sub);
-    const explicitName = normalizeClaim(payload?.name);
-    const fullName = `${firstName} ${lastName}`.trim() || explicitName || username || email || "AERIXA User";
-    const avatarUrl =
-      normalizeClaim(payload?.picture) ||
-      normalizeClaim(payload?.avatar) ||
-      normalizeClaim(payload?.profileImageUrl) ||
-      normalizeClaim(payload?.photoUrl);
+  const connectedUserId = normalizeClaim(connectedUserTokenPayload?.sub);
+  const connectedUserEmail = normalizeClaim(connectedUserTokenPayload?.email) || normalizeClaim(connectedUserTokenPayload?.preferred_username);
+
+  const connectedUserProfileQuery = useQuery({
+    queryKey: ["settings-profile", connectedUserId || connectedUserEmail],
+    enabled: Boolean(accessToken && (connectedUserId || connectedUserEmail)),
+    queryFn: () => api.users.getMe(accessToken),
+  });
+
+  const [connectedUserProfilePhotoUrl, setConnectedUserProfilePhotoUrl] = useState("");
+
+  useEffect(() => {
+    const profilePhotoPath = connectedUserProfileQuery.data?.profilePhotoUrl?.trim() ?? "";
+    if (!accessToken || !profilePhotoPath) {
+      setConnectedUserProfilePhotoUrl("");
+      return;
+    }
+
+    let cancelled = false;
+    let localObjectUrl = "";
+
+    api.users
+      .getProfilePhotoBlob(accessToken, profilePhotoPath)
+      .then((blob) => {
+        if (cancelled) {
+          return;
+        }
+        localObjectUrl = URL.createObjectURL(blob);
+        setConnectedUserProfilePhotoUrl(localObjectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setConnectedUserProfilePhotoUrl("");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      if (localObjectUrl) {
+        URL.revokeObjectURL(localObjectUrl);
+      }
+    };
+  }, [accessToken, connectedUserProfileQuery.data?.profilePhotoUrl]);
+
+  const connectedUser = useMemo(() => {
+    const profile = connectedUserProfileQuery.data;
+
+    const profileFirstName = profile?.firstName?.trim() ?? "";
+    const profileLastName = profile?.lastName?.trim() ?? "";
+    const profileUsername = profile?.username?.trim() ?? "";
+    const profileEmail = profile?.email?.trim() ?? "";
+
+    const tokenFirstName = normalizeClaim(connectedUserTokenPayload?.firstName) || normalizeClaim(connectedUserTokenPayload?.given_name);
+    const tokenLastName = normalizeClaim(connectedUserTokenPayload?.lastName) || normalizeClaim(connectedUserTokenPayload?.family_name);
+    const tokenUsername = normalizeClaim(connectedUserTokenPayload?.username) || normalizeClaim(connectedUserTokenPayload?.preferred_username);
+    const tokenEmail = normalizeClaim(connectedUserTokenPayload?.email) || normalizeClaim(connectedUserTokenPayload?.sub);
+    const tokenName = normalizeClaim(connectedUserTokenPayload?.name);
+
+    const firstName = profileFirstName || tokenFirstName;
+    const lastName = profileLastName || tokenLastName;
+    const username = profileUsername || tokenUsername;
+    const email = profileEmail || tokenEmail;
+
+    const fullName = `${firstName} ${lastName}`.trim() || tokenName || username || email || "AERIXA User";
+    const rawAvatarUrl =
+      normalizeClaim(connectedUserTokenPayload?.picture) ||
+      normalizeClaim(connectedUserTokenPayload?.avatar) ||
+      normalizeClaim(connectedUserTokenPayload?.profileImageUrl) ||
+      normalizeClaim(connectedUserTokenPayload?.photoUrl);
 
     return {
       fullName,
-      initials: computeInitials(fullName),
-      avatarUrl,
+      initials: computeInitials(`${firstName} ${lastName}`.trim(), username || email),
+      avatarUrl: connectedUserProfilePhotoUrl || resolveAvatarUrl(rawAvatarUrl),
     };
-  }, [accessToken]);
+  }, [connectedUserProfilePhotoUrl, connectedUserProfileQuery.data, connectedUserTokenPayload]);
+
+  const permissionSet = useMemo(() => buildPermissionSet(connectedUserProfileQuery.data ?? null), [connectedUserProfileQuery.data]);
+  const tokenRoles = useMemo(() => {
+    const fromArray = connectedUserTokenPayload?.roles;
+    if (Array.isArray(fromArray)) {
+      return fromArray
+        .map((role) => (typeof role === "string" ? role : ""))
+        .filter(Boolean);
+    }
+
+    const single = normalizeClaim(connectedUserTokenPayload?.role);
+    return single ? [single] : [];
+  }, [connectedUserTokenPayload]);
+
+  const canReadUsers = hasPermission(permissionSet, "users:read_all") || hasPermission(permissionSet, "users:read_children");
+  const canReadSessions = hasPermission(permissionSet, "sessions:read_all") || hasPermission(permissionSet, "sessions:read_children");
+  const canReadRoles = hasPermission(permissionSet, "roles:read");
+  const canReadPermissions = hasPermission(permissionSet, "permissions:read");
+  const canReadMailTemplates = hasPermission(permissionSet, "email_templates:read");
+  const canReadNotifications = hasPermission(permissionSet, "notifications:read");
+  const canEditNotifications = hasPermission(permissionSet, "notifications:edit");
+  const canDeleteNotifications = hasPermission(permissionSet, "notifications:delete");
+  const canReadAudit = hasPermission(permissionSet, "audit_logs:read");
+  const canReadEstablishments = hasPermission(permissionSet, "establishments:list");
+  const isSuperAdmin = useMemo(() => {
+    const profileRoles = connectedUserProfileQuery.data?.roles ?? [];
+    const merged = [...profileRoles, ...tokenRoles]
+      .map((role) => role.replace(/^ROLE_/, "").toUpperCase());
+    return merged.includes("SUPER_ADMIN");
+  }, [connectedUserProfileQuery.data?.roles, tokenRoles]);
+  const canReadConfiguration = useMemo(() => {
+    return hasPermission(permissionSet, "business_configuration:access");
+  }, [permissionSet]);
 
   const [apiLog, setApiLog] = useState<string[]>([]);
   const [searchDialogOpen, setSearchDialogOpen] = useState(false);
+  const [mobileOverflowOpen, setMobileOverflowOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [notificationMenuOpen, setNotificationMenuOpen] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
@@ -148,9 +302,10 @@ export function AdminDashboard() {
   const [notificationReadStatus, setNotificationReadStatus] = useState<NotificationReadStatus>("ALL");
   const [notificationSearchQuery, setNotificationSearchQuery] = useState("");
   const [notificationTypeFilter, setNotificationTypeFilter] = useState("ALL");
+  const [showNotificationFilters, setShowNotificationFilters] = useState(false);
   const [selectedDropdownNotificationIds, setSelectedDropdownNotificationIds] = useState<Set<string>>(new Set());
   const [selectedDialogNotificationIds, setSelectedDialogNotificationIds] = useState<Set<string>>(new Set());
-  const [showAuditFilters, setShowAuditFilters] = useState(true);
+  const [showAuditFilters, setShowAuditFilters] = useState(false);
   const [auditSearchQuery, setAuditSearchQuery] = useState("");
   const [auditActionFilter, setAuditActionFilter] = useState("ALL");
   const [auditStatusFilter, setAuditStatusFilter] = useState<AuditStatusFilter>("ALL");
@@ -232,20 +387,63 @@ export function AdminDashboard() {
   const notificationsDropdownQuery = useQuery({
     queryKey: ["notifications", accessToken, "dropdown"],
     queryFn: () => api.notifications.list(accessToken, 0, 8, "UNREAD"),
-    enabled: Boolean(accessToken),
+    enabled: Boolean(accessToken && canReadNotifications),
   });
 
   const notificationsDialogQuery = useQuery({
     queryKey: ["notifications", accessToken, "dialog", notificationPage, notificationPageSize, notificationReadStatus],
     queryFn: () => api.notifications.list(accessToken, notificationPage, notificationPageSize, notificationReadStatus),
-    enabled: Boolean(accessToken) && activeTab === "settings-notifications",
+    enabled: Boolean(accessToken && canReadNotifications) && activeTab === "settings-notifications",
   });
 
   const unreadCountQuery = useQuery({
     queryKey: ["notifications", accessToken, "unread-count"],
     queryFn: () => api.notifications.unreadCount(accessToken),
-    enabled: Boolean(accessToken),
+    enabled: Boolean(accessToken && canReadNotifications),
   });
+
+  const auditLogsQuery = useQuery({
+    queryKey: ["audit-logs", accessToken, auditPage, auditPageSize, auditSearchQuery, auditActionFilter, auditStatusFilter],
+    queryFn: () =>
+      api.auditLogs.listMine(accessToken, {
+        page: auditPage,
+        size: auditPageSize,
+        search: auditSearchQuery,
+        action: auditActionFilter,
+        status: auditStatusFilter,
+      }),
+    enabled: Boolean(accessToken && canReadAudit) && activeTab === "settings-audit",
+  });
+
+    const auditSummaryQuery = useQuery({
+      queryKey: ["audit-logs-summary", accessToken],
+      queryFn: () => api.auditLogs.summary(accessToken),
+      enabled: Boolean(accessToken && canReadAudit) && activeTab === "settings-audit",
+    });
+
+  useEffect(() => {
+    // Wait for the user's permissions to be loaded before deciding whether the
+    // active tab is accessible — otherwise an empty permission set would wrongly
+    // redirect away from deep links like /dashboard/establishments on first load.
+    if (!connectedUserProfileQuery.data) return;
+
+    const fallbackTab = firstAccessibleTab(permissionSet, [
+      "dashboard",
+      "users",
+      "sessions",
+      "security-roles",
+      "security-permissions",
+      "mail-template",
+      "settings-profile",
+      ...(canReadConfiguration ? ["settings-configuration"] : []),
+      "settings-notifications",
+      "settings-audit",
+    ]);
+
+    if (!canAccessTab(permissionSet, activeTab as TabKey)) {
+      setActiveTab(fallbackTab);
+    }
+  }, [activeTab, permissionSet, setActiveTab, canReadConfiguration, connectedUserProfileQuery.data]);
 
   const invalidateNotifications = async () => {
     await queryClient.invalidateQueries({ queryKey: ["notifications", accessToken] });
@@ -325,30 +523,24 @@ export function AdminDashboard() {
 
   const auditEntries = useMemo<AuditEntry[]>(
     () =>
-      apiLog.map((line, index) => {
-        const separatorIndex = line.indexOf(" - ");
-        const time = separatorIndex >= 0 ? line.slice(0, separatorIndex).trim() : "-";
-        const payload = separatorIndex >= 0 ? line.slice(separatorIndex + 3).trim() : line.trim();
-        const actionSeparatorIndex = payload.indexOf(":");
-        const action = (actionSeparatorIndex >= 0 ? payload.slice(0, actionSeparatorIndex) : payload).trim();
-        const message = (actionSeparatorIndex >= 0 ? payload.slice(actionSeparatorIndex + 1) : "").trim();
-        const normalized = payload.toUpperCase();
-        const status: Exclude<AuditStatusFilter, "ALL"> = normalized.includes("ERROR")
-          ? "ERROR"
-          : normalized.includes("OK")
-            ? "OK"
-            : "INFO";
+      (auditLogsQuery.data?.content ?? []).map((entry: AuditLogResponse) => {
+        const detailsRaw = entry.details?.trim();
+        const rawDetails = detailsRaw && detailsRaw.length > 0 ? detailsRaw : "{}";
+        const time = formatNotificationDate(entry.timestamp, locale);
 
         return {
-          id: `${index}-${line}`,
+          id: entry.id,
           time,
-          action: action || (locale === "fr" ? "Action" : "Action"),
-          message,
-          status,
-          raw: line,
+          action: entry.action,
+          message: entry.message ?? entry.resourcePath ?? "",
+          status: entry.status,
+          outcome: entry.outcome,
+          correlationId: entry.correlationId,
+          reasonCode: entry.reasonCode,
+          raw: rawDetails,
         };
       }),
-    [apiLog, locale],
+    [auditLogsQuery.data?.content, locale],
   );
 
   const auditActionOptions = useMemo(
@@ -358,71 +550,150 @@ export function AdminDashboard() {
         label: locale === "fr" ? "Toutes les actions" : "All actions",
         keywords: ["all", "toutes", "actions"],
       },
-      ...Array.from(new Set(auditEntries.map((entry) => entry.action))).map((action) => ({
+      ...AUDIT_ACTION_OPTIONS.map((action) => ({
         value: action,
         label: action,
         keywords: [action.toLowerCase()],
       })),
     ],
-    [auditEntries, locale],
+    [locale],
   );
 
-  const filteredAuditEntries = useMemo(
-    () =>
-      auditEntries.filter((entry) => {
-        const query = auditSearchQuery.trim().toLowerCase();
-        const matchesQuery =
-          query.length === 0 ||
-          `${entry.action} ${entry.message} ${entry.raw}`.toLowerCase().includes(query);
-        const matchesAction = auditActionFilter === "ALL" || entry.action === auditActionFilter;
-        const matchesStatus = auditStatusFilter === "ALL" || entry.status === auditStatusFilter;
-        return matchesQuery && matchesAction && matchesStatus;
-      }),
-    [auditEntries, auditSearchQuery, auditActionFilter, auditStatusFilter],
-  );
-
-  const auditTotalElements = filteredAuditEntries.length;
-  const auditTotalPages = Math.ceil(auditTotalElements / auditPageSize);
+  const auditTotalElements = auditLogsQuery.data?.totalElements ?? 0;
+  const auditTotalPages = auditLogsQuery.data?.totalPages ?? 0;
   const safeAuditPage = Math.min(auditPage, Math.max(auditTotalPages - 1, 0));
-  const pagedAuditEntries = filteredAuditEntries.slice(
-    safeAuditPage * auditPageSize,
-    safeAuditPage * auditPageSize + auditPageSize,
-  );
+  const pagedAuditEntries = auditEntries;
+  const localAuditFallback = apiLog.slice(0, 12);
+  const auditSummary: AuditDashboardSummaryResponse | undefined = auditSummaryQuery.data;
   const allAuditSelectedOnPage =
     pagedAuditEntries.length > 0 &&
     pagedAuditEntries.every((entry) => selectedAuditIds.has(entry.id));
 
+  const breadcrumbItems = useMemo<BreadcrumbItem[]>(() => {
+      const groupFr: Record<string, string> = {
+        users: "Users",
+        sessions: "Users",
+        "security-roles": "Securite",
+        "security-permissions": "Securite",
+        "mail-template": "Communication",
+        "settings-profile": "Parametres",
+        "settings-notifications": "Parametres",
+        "settings-audit": "Parametres",
+        "settings-configuration": "Parametres",
+        "config-establishments": "Configuration",
+        "config-academic-levels": "Configuration",
+        "config-entry-diplomas": "Configuration",
+        "config-program-tracks": "Configuration",
+        "config-program-track-levels": "Configuration",
+        "config-acquisition-channels": "Configuration",
+        "config-funnel-stages": "Configuration",
+        "config-funnel-stage-transitions": "Configuration",
+      };
+      const groupEn: Record<string, string> = {
+        users: "Users",
+        sessions: "Users",
+        "security-roles": "Security",
+        "security-permissions": "Security",
+        "mail-template": "Communication",
+        "settings-profile": "Settings",
+        "settings-notifications": "Settings",
+        "settings-audit": "Settings",
+        "settings-configuration": "Settings",
+        "config-establishments": "Configuration",
+        "config-academic-levels": "Configuration",
+        "config-entry-diplomas": "Configuration",
+        "config-program-tracks": "Configuration",
+        "config-program-track-levels": "Configuration",
+        "config-acquisition-channels": "Configuration",
+        "config-funnel-stages": "Configuration",
+        "config-funnel-stage-transitions": "Configuration",
+      };
+      const leafFr: Record<string, string> = {
+        dashboard: "Tableau de bord",
+        users: "Utilisateurs",
+        sessions: "Sessions",
+        "security-roles": "Roles",
+        "security-permissions": "Permissions",
+        "mail-template": "Template de mail",
+        "settings-profile": "Profil",
+        "settings-notifications": "Notifications",
+        "settings-audit": "Journal d'audit",
+        "settings-configuration": "Configuration metier",
+        "config-establishments": "Etablissements",
+        "config-academic-levels": "Niveaux academiques",
+        "config-entry-diplomas": "Diplomes d'entree",
+        "config-program-tracks": "Filieres",
+        "config-program-track-levels": "Niveaux de filiere",
+        "config-acquisition-channels": "Canaux d'acquisition",
+        "config-funnel-stages": "Etapes du funnel",
+        "config-funnel-stage-transitions": "Transitions du funnel",
+      };
+      const leafEn: Record<string, string> = {
+        dashboard: "Dashboard",
+        users: "Users",
+        sessions: "Sessions",
+        "security-roles": "Roles",
+        "security-permissions": "Permissions",
+        "mail-template": "Mail template",
+        "settings-profile": "Profile",
+        "settings-notifications": "Notifications",
+        "settings-audit": "Audit log",
+        "settings-configuration": "Business configuration",
+        "config-establishments": "Establishments",
+        "config-academic-levels": "Academic levels",
+        "config-entry-diplomas": "Entry diplomas",
+        "config-program-tracks": "Program tracks",
+        "config-program-track-levels": "Track levels",
+        "config-acquisition-channels": "Acquisition channels",
+        "config-funnel-stages": "Funnel stages",
+        "config-funnel-stage-transitions": "Funnel transitions",
+      };
+      const groupMap = locale === "fr" ? groupFr : groupEn;
+      const leafMap = locale === "fr" ? leafFr : leafEn;
+      const group = groupMap[activeTab];
+      const leaf = leafMap[activeTab] ?? activeTab;
+      if (!group) return [{ label: leaf }];
+      return [{ label: group }, { label: leaf }];
+    }, [activeTab, locale]);
+
   const globalSearchItems = useMemo<GlobalSearchItem[]>(
-    () =>
-      locale === "fr"
-        ? [
-            { id: "dashboard", label: "Tableau de bord", section: "Navigation", tab: "dashboard", icon: LayoutDashboard },
-            { id: "users", label: "Utilisateurs", section: "Users", tab: "users", icon: UserRound },
-            { id: "sessions", label: "Sessions", section: "Users", tab: "sessions", icon: Clock3 },
-            { id: "roles", label: "Roles", section: "Securite", tab: "security-roles", icon: KeyRound },
-            { id: "permissions", label: "Permissions", section: "Securite", tab: "security-permissions", icon: Lock },
-            { id: "mail-template", label: "Template de mail", section: "Communication", tab: "mail-template", icon: Mail },
-            { id: "profile", label: "Profile", section: "Parametre", tab: "settings-profile", icon: UserRound },
-            { id: "notifications", label: "Notifications", section: "Parametre", tab: "settings-notifications", icon: Bell },
-            { id: "audit", label: "Journal d'audit", section: "Parametre", tab: "settings-audit", icon: FileText },
-          ]
-        : [
-            { id: "dashboard", label: "Dashboard", section: "Navigation", tab: "dashboard", icon: LayoutDashboard },
-            { id: "users", label: "Users", section: "Users", tab: "users", icon: UserRound },
-            { id: "sessions", label: "Sessions", section: "Users", tab: "sessions", icon: Clock3 },
-            { id: "roles", label: "Roles", section: "Security", tab: "security-roles", icon: KeyRound },
-            { id: "permissions", label: "Permissions", section: "Security", tab: "security-permissions", icon: Lock },
-            { id: "mail-template", label: "Mail template", section: "Communication", tab: "mail-template", icon: Mail },
-            { id: "profile", label: "Profile", section: "Settings", tab: "settings-profile", icon: UserRound },
-            { id: "notifications", label: "Notifications", section: "Settings", tab: "settings-notifications", icon: Bell },
-            { id: "audit", label: "Audit log", section: "Settings", tab: "settings-audit", icon: FileText },
-          ],
-    [locale],
-  );
+      () =>
+        locale === "fr"
+          ? [
+              { id: "dashboard", label: "Tableau de bord", section: "Navigation", tab: "dashboard", icon: LayoutDashboard },
+              { id: "users", label: "Utilisateurs", section: "Users", tab: "users", icon: UserRound },
+              { id: "sessions", label: "Sessions", section: "Users", tab: "sessions", icon: Clock3 },
+              { id: "roles", label: "Roles", section: "Securite", tab: "security-roles", icon: KeyRound },
+              { id: "permissions", label: "Permissions", section: "Securite", tab: "security-permissions", icon: Lock },
+              { id: "mail-template", label: "Template de mail", section: "Communication", tab: "mail-template", icon: Mail },
+              { id: "profile", label: "Profile", section: "Parametre", tab: "settings-profile", icon: UserRound },
+              ...(canReadConfiguration ? [{ id: "configuration", label: "Configuration metier", section: "Parametre", tab: "settings-configuration", icon: Settings }] : []),
+              { id: "notifications", label: "Notifications", section: "Parametre", tab: "settings-notifications", icon: Bell },
+              { id: "audit", label: "Journal d'audit", section: "Parametre", tab: "settings-audit", icon: FileText },
+            ]
+          : [
+              { id: "dashboard", label: "Dashboard", section: "Navigation", tab: "dashboard", icon: LayoutDashboard },
+              { id: "users", label: "Users", section: "Users", tab: "users", icon: UserRound },
+              { id: "sessions", label: "Sessions", section: "Users", tab: "sessions", icon: Clock3 },
+              { id: "roles", label: "Roles", section: "Security", tab: "security-roles", icon: KeyRound },
+              { id: "permissions", label: "Permissions", section: "Security", tab: "security-permissions", icon: Lock },
+              { id: "mail-template", label: "Mail template", section: "Communication", tab: "mail-template", icon: Mail },
+              { id: "profile", label: "Profile", section: "Settings", tab: "settings-profile", icon: UserRound },
+              ...(canReadConfiguration ? [{ id: "configuration", label: "Business configuration", section: "Settings", tab: "settings-configuration", icon: Settings }] : []),
+              { id: "notifications", label: "Notifications", section: "Settings", tab: "settings-notifications", icon: Bell },
+              { id: "audit", label: "Audit log", section: "Settings", tab: "settings-audit", icon: FileText },
+            ],
+      [locale, canReadConfiguration],
+    );
 
   const filteredSearchItems = useMemo(
-    () => globalSearchItems.filter((item) => `${item.label} ${item.section}`.toLowerCase().includes(searchQuery.toLowerCase())),
-    [globalSearchItems, searchQuery],
+    () =>
+      globalSearchItems.filter(
+        (item) =>
+          canAccessTab(permissionSet, item.tab as TabKey) &&
+          `${item.label} ${item.section}`.toLowerCase().includes(searchQuery.toLowerCase()),
+      ),
+    [globalSearchItems, permissionSet, searchQuery],
   );
 
   useEffect(() => {
@@ -487,6 +758,22 @@ export function AdminDashboard() {
               ],
             },
             {
+              id: "configuration",
+              label: "Config",
+              icon: Building2,
+              subItems: [
+                { id: "settings-configuration", label: "Configuration metier", tab: "settings-configuration", icon: Settings },
+                { id: "config-establishments", label: "Etablissements", tab: "config-establishments", icon: Building2 },
+                { id: "config-entry-diplomas", label: "Diplomes d'entree", tab: "config-entry-diplomas", icon: Award },
+                { id: "config-academic-levels", label: "Niveaux academiques", tab: "config-academic-levels", icon: GraduationCap },
+                { id: "config-program-tracks", label: "Filieres", tab: "config-program-tracks", icon: BookOpen },
+                { id: "config-program-track-levels", label: "Niveaux filiere", tab: "config-program-track-levels", icon: Layers },
+                { id: "config-acquisition-channels", label: "Canaux d'acquisition", tab: "config-acquisition-channels", icon: Megaphone },
+                { id: "config-funnel-stages", label: "Etapes du funnel", tab: "config-funnel-stages", icon: Filter},
+                { id: "config-funnel-stage-transitions", label: "Transitions du funnel", tab: "config-funnel-stage-transitions", icon: GitBranch },
+              ],
+            },
+            {
               id: "mail-template",
               label: "Mail",
               icon: Mail,
@@ -531,6 +818,22 @@ export function AdminDashboard() {
               ],
             },
             {
+              id: "configuration",
+              label: "Config",
+              icon: Building2,
+              subItems: [
+                { id: "settings-configuration", label: "Business configuration", tab: "settings-configuration", icon: Settings },
+                { id: "config-establishments", label: "Establishments", tab: "config-establishments", icon: Building2 },
+                { id: "config-entry-diplomas", label: "Entry diplomas", tab: "config-entry-diplomas", icon: Award },
+                { id: "config-academic-levels", label: "Academic levels", tab: "config-academic-levels", icon: GraduationCap },
+                { id: "config-program-tracks", label: "Program tracks", tab: "config-program-tracks", icon: BookOpen },
+                { id: "config-program-track-levels", label: "Track levels", tab: "config-program-track-levels", icon: Layers },
+                { id: "config-acquisition-channels", label: "Acquisition channels", tab: "config-acquisition-channels", icon: Megaphone },
+                { id: "config-funnel-stages", label: "Funnel stages", tab: "config-funnel-stages", icon: Filter},
+                { id: "config-funnel-stage-transitions", label: "Funnel transitions", tab: "config-funnel-stage-transitions", icon: GitBranch },
+              ],
+            },
+            {
               id: "mail-template",
               label: "Mail",
               icon: Mail,
@@ -551,21 +854,65 @@ export function AdminDashboard() {
     [locale],
   );
 
-  const activeMobileGroup = useMemo(
+  const visibleMobileMenuGroups = useMemo(
     () =>
-      mobileMenuGroups.find(
-        (item) => item.tab === activeTab || item.subItems.some((subItem) => subItem.tab === activeTab),
-      ) ?? mobileMenuGroups[0],
-    [activeTab, mobileMenuGroups],
+      mobileMenuGroups
+        .map((item) => {
+          const canOpenRoot = item.tab ? canAccessTab(permissionSet, item.tab as TabKey) : false;
+          const subItems = item.subItems.filter((subItem) => canAccessTab(permissionSet, subItem.tab as TabKey));
+          if (!canOpenRoot && subItems.length === 0) {
+            return null;
+          }
+          return {
+            ...item,
+            subItems,
+          };
+        })
+        .filter(Boolean) as MobileMenuGroup[],
+    [mobileMenuGroups, permissionSet],
   );
 
+  const activeMobileGroup = useMemo(
+    () =>
+      visibleMobileMenuGroups.find(
+        (item) => item.tab === activeTab || item.subItems.some((subItem) => subItem.tab === activeTab),
+      ) ?? visibleMobileMenuGroups[0],
+    [activeTab, visibleMobileMenuGroups],
+  );
+
+  const { primaryMobileMenuGroups, overflowMobileMenuGroups } = useMemo(() => {
+    // 3 menus + More + Logout pour garder une navigation mobile lisible
+    const maxPrimaryGroups = 3;
+    if (visibleMobileMenuGroups.length <= maxPrimaryGroups) {
+      return { primaryMobileMenuGroups: visibleMobileMenuGroups, overflowMobileMenuGroups: [] as MobileMenuGroup[] };
+    }
+    const primaryMobileGroups = visibleMobileMenuGroups.slice(0, maxPrimaryGroups);
+    const primaryIds = new Set(primaryMobileGroups.map((group) => group.id));
+    return {
+      primaryMobileMenuGroups: primaryMobileGroups,
+      overflowMobileMenuGroups: visibleMobileMenuGroups.filter((group) => !primaryIds.has(group.id)),
+    };
+  }, [visibleMobileMenuGroups]);
+
+  const isMoreActive = useMemo(() => {
+    if (!activeMobileGroup) {
+      return false;
+    }
+    return overflowMobileMenuGroups.some((group) => group.id === activeMobileGroup.id);
+  }, [activeMobileGroup, overflowMobileMenuGroups]);
+
+  useEffect(() => {
+    setMobileOverflowOpen(false);
+  }, [activeTab]);
+
   const selectMobileGroup = (group: MobileMenuGroup) => {
+    setMobileOverflowOpen(false);
     if (group.subItems.length > 0) {
-      setActiveTab(group.subItems[0].tab);
+      router.push(tabToPath(group.subItems[0].tab as TabKey));
       return;
     }
     if (group.tab) {
-      setActiveTab(group.tab);
+      router.push(tabToPath(group.tab as TabKey));
     }
   };
 
@@ -656,12 +1003,6 @@ export function AdminDashboard() {
     });
   };
 
-  useEffect(() => {
-    if (auditPage > 0 && auditPage > Math.max(auditTotalPages - 1, 0)) {
-      setAuditPage(Math.max(auditTotalPages - 1, 0));
-    }
-  }, [auditPage, auditTotalPages]);
-
   return (
     <div className="admin-typography min-h-screen bg-background text-foreground">
       <AppSidebar />
@@ -682,27 +1023,29 @@ export function AdminDashboard() {
             </AppTooltip>
 
             <div className="ml-auto flex items-center gap-2" ref={notificationRef}>
-              <AppTooltip content={locale === "fr" ? "Voir les notifications" : "View notifications"}>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="relative h-9 w-9 rounded-full p-0 hover:bg-muted"
-                  onClick={() => {
-                    setNotificationMenuOpen((current) => {
-                      if (current) {
-                        setSelectedDropdownNotificationIds(new Set());
-                      }
-                      return !current;
-                    });
-                  }}
-                  aria-label={locale === "fr" ? "Notifications" : "Notifications"}
-                >
-                  <Bell className="h-4 w-4" />
-                  {unreadNotificationsCount > 0 ? (
-                    <span className="absolute right-1.5 top-1.5 inline-flex h-2.5 w-2.5 rounded-full bg-destructive" />
-                  ) : null}
-                </Button>
-              </AppTooltip>
+              {canReadNotifications ? (
+                <AppTooltip content={locale === "fr" ? "Voir les notifications" : "View notifications"}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="relative h-9 w-9 rounded-full p-0 hover:bg-muted"
+                    onClick={() => {
+                      setNotificationMenuOpen((current) => {
+                        if (current) {
+                          setSelectedDropdownNotificationIds(new Set());
+                        }
+                        return !current;
+                      });
+                    }}
+                    aria-label={locale === "fr" ? "Notifications" : "Notifications"}
+                  >
+                    <Bell className="h-4 w-4" />
+                    {unreadNotificationsCount > 0 ? (
+                      <span className="absolute right-1.5 top-1.5 inline-flex h-2.5 w-2.5 rounded-full bg-destructive" />
+                    ) : null}
+                  </Button>
+                </AppTooltip>
+              ) : null}
 
               {notificationMenuOpen ? (
                 <div className="absolute right-0 top-12 z-40 w-90 rounded-xl border border-border bg-card p-3 shadow-xl">
@@ -724,7 +1067,7 @@ export function AdminDashboard() {
                         ids: Array.from(selectedDropdownNotificationIds),
                         read: true,
                       })}
-                      disabled={selectedDropdownNotificationIds.size === 0 || updateBulkNotificationReadStatusMutation.isPending}
+                      disabled={!canEditNotifications || selectedDropdownNotificationIds.size === 0 || updateBulkNotificationReadStatusMutation.isPending}
                     >
                       {locale === "fr" ? "Marquer selection lue" : "Mark selected as read"}
                     </Button>
@@ -759,7 +1102,7 @@ export function AdminDashboard() {
                     variant="outline"
                     className="mt-3 w-full"
                     onClick={() => {
-                      setActiveTab("settings-notifications");
+                      router.push(tabToPath("settings-notifications"));
                       closeNotificationMenu();
                     }}
                   >
@@ -818,14 +1161,16 @@ export function AdminDashboard() {
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 md:px-8 md:py-8">
+        <main className="w-full space-y-5 px-3 py-4 pb-24 md:space-y-6 md:px-8 md:py-8 md:pb-8">
+          <Breadcrumbs items={breadcrumbItems} onNavigate={(_tab, stepsBack) => window.history.go(-stepsBack)} />
+
           <section className="md:hidden">
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="w-full">
-                {activeMobileGroup.subItems.map((subItem) => {
+            <Tabs value={activeTab} onValueChange={(tab) => router.push(tabToPath(tab as TabKey))}>
+              <TabsList className="w-full justify-start gap-1 overflow-x-auto rounded-2xl border border-border/60 bg-card/70 p-1.5">
+                {(activeMobileGroup?.subItems ?? []).map((subItem) => {
                   const SubIcon = subItem.icon;
                   return (
-                    <TabsTrigger key={subItem.id} value={subItem.tab} className="justify-center">
+                    <TabsTrigger key={subItem.id} value={subItem.tab} className="shrink-0 justify-center rounded-xl px-3 py-1.5">
                       {SubIcon ? <SubIcon className="h-3.5 w-3.5" /> : null}
                       <span>{subItem.label}</span>
                     </TabsTrigger>
@@ -838,12 +1183,12 @@ export function AdminDashboard() {
           <Card className="border-border/60 bg-card/70 shadow-sm">
             <CardHeader className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
               <div>
-                <CardTitle className="text-3xl">{t.title}</CardTitle>
+                <CardTitle className="text-2xl md:text-3xl">{t.title}</CardTitle>
                 <CardDescription>{t.subtitle}</CardDescription>
               </div>
               <Badge className="w-fit" variant="outline">
                 <LayoutDashboard className="h-3.5 w-3.5" />
-                {t.section}: {activeTab}
+                {t.section}: {breadcrumbItems[breadcrumbItems.length - 1]?.label ?? activeTab}
               </Badge>
             </CardHeader>
           </Card>
@@ -856,8 +1201,8 @@ export function AdminDashboard() {
                   <CardDescription>{locale === "fr" ? "Acces rapide aux utilisateurs" : "Quick access to users"}</CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-2">
-                  <Button variant="outline" onClick={() => setActiveTab("users")}>{locale === "fr" ? "Ouvrir utilisateurs" : "Open users"}</Button>
-                  <Button variant="outline" onClick={() => setActiveTab("sessions")}>{locale === "fr" ? "Ouvrir sessions" : "Open sessions"}</Button>
+                  <Button variant="outline" onClick={() => router.push(tabToPath("users"))} disabled={!canReadUsers}>{locale === "fr" ? "Ouvrir utilisateurs" : "Open users"}</Button>
+                  <Button variant="outline" onClick={() => router.push(tabToPath("sessions"))} disabled={!canReadSessions}>{locale === "fr" ? "Ouvrir sessions" : "Open sessions"}</Button>
                 </CardContent>
               </Card>
               <Card className="border-border/60 bg-card/70">
@@ -866,8 +1211,9 @@ export function AdminDashboard() {
                   <CardDescription>{locale === "fr" ? "Roles et permissions" : "Roles and permissions"}</CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-2">
-                  <Button variant="outline" onClick={() => setActiveTab("security-roles")}>{locale === "fr" ? "Gerer les roles" : "Manage roles"}</Button>
-                  <Button variant="outline" onClick={() => setActiveTab("security-permissions")}>{locale === "fr" ? "Gerer les permissions" : "Manage permissions"}</Button>
+                  <Button variant="outline" onClick={() => router.push(tabToPath("security-roles"))} disabled={!canReadRoles}>{locale === "fr" ? "Gerer les roles" : "Manage roles"}</Button>
+                  <Button variant="outline" onClick={() => router.push(tabToPath("security-permissions"))} disabled={!canReadPermissions}>{locale === "fr" ? "Gerer les permissions" : "Manage permissions"}</Button>
+                  <Button variant="outline" onClick={() => router.push(tabToPath("settings-configuration"))} disabled={!canReadConfiguration}>{locale === "fr" ? "Ouvrir configuration metier" : "Open business configuration"}</Button>
                 </CardContent>
               </Card>
               <Card className="border-border/60 bg-card/70">
@@ -884,23 +1230,23 @@ export function AdminDashboard() {
             </section>
           ) : null}
 
-          {activeTab === "security-roles" ? (
+          {activeTab === "security-roles" && canReadRoles ? (
             <SecurityRolesPanel locale={locale} onLog={appendLog} accessToken={accessToken} />
           ) : null}
 
-          {activeTab === "security-permissions" ? (
+          {activeTab === "security-permissions" && canReadPermissions ? (
             <SecurityPermissionsPanel locale={locale} />
           ) : null}
 
-          {activeTab === "sessions" ? (
-            <SessionsManagementPanel accessToken={accessToken} locale={locale} onLog={appendLog} />
+          {activeTab === "sessions" && canReadSessions ? (
+            <SessionsManagementPanel accessToken={accessToken} locale={locale} onLog={appendLog} permissionSet={permissionSet} />
           ) : null}
 
-          {activeTab === "users" ? (
-            <UsersManagementPanel accessToken={accessToken} locale={locale} onLog={appendLog} />
+          {activeTab === "users" && canReadUsers ? (
+            <UsersManagementPanel accessToken={accessToken} locale={locale} onLog={appendLog} permissionSet={permissionSet} />
           ) : null}
 
-          {activeTab === "mail-template" ? (
+          {activeTab === "mail-template" && canReadMailTemplates ? (
             <Card className="border-border/60 bg-card/70">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Mail className="h-5 w-5" /> {locale === "fr" ? "Template de mail" : "Mail template"}</CardTitle>
@@ -920,13 +1266,45 @@ export function AdminDashboard() {
             <ProfileSettingsPanel accessToken={accessToken} locale={locale} onLog={appendLog} />
           ) : null}
 
-          {activeTab === "settings-notifications" ? (
+          {activeTab === "settings-configuration" && canReadConfiguration ? (
+            <ConfigurationManagementPanel accessToken={accessToken} locale={locale} onLog={appendLog} />
+          ) : null}
+
+          {activeTab === "config-establishments" && canReadEstablishments ? (
+            <EstablishmentsPanel accessToken={accessToken} locale={locale} />
+          ) : null}
+
+          {activeTab === "config-entry-diplomas" ? (
+            <EntryDiplomasPanel accessToken={accessToken} locale={locale} />
+          ) : null}
+
+          {activeTab === "settings-notifications" && canReadNotifications ? (
             <Card className="border-border/60 bg-card/70">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Bell className="h-5 w-5" /> {locale === "fr" ? "Notifications" : "Notifications"}</CardTitle>
                 <CardDescription>{locale === "fr" ? "Filtres avancés et actions bulk directement dans la page" : "Advanced filters and bulk actions directly in page"}</CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm text-muted-foreground">
+                    {locale === "fr"
+                      ? `Vous avez actuellement ${unreadNotificationsCount} notification(s) non lue(s).`
+                      : `You currently have ${unreadNotificationsCount} unread notification(s).`}
+                  </p>
+                  <AppTooltip content={locale === "fr" ? "Afficher/masquer les filtres" : "Show/hide filters"}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={`h-9 w-9 rounded-xl text-muted-foreground transition-colors hover:bg-background/80 hover:text-foreground ${showNotificationFilters ? "bg-background/80 text-foreground" : ""}`}
+                      onClick={() => setShowNotificationFilters((current) => !current)}
+                      aria-label={locale === "fr" ? "Afficher/masquer les filtres" : "Show/hide filters"}
+                    >
+                      <Filter className="h-4 w-4" />
+                    </Button>
+                  </AppTooltip>
+                </div>
+
+                {showNotificationFilters ? (
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground" htmlFor="notifications-query-filter">
@@ -993,46 +1371,26 @@ export function AdminDashboard() {
                     />
                   </div>
                 </div>
+                ) : null}
 
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm text-muted-foreground">
-                    {locale === "fr"
-                      ? `Vous avez actuellement ${unreadNotificationsCount} notification(s) non lue(s).`
-                      : `You currently have ${unreadNotificationsCount} unread notification(s).`}
-                  </p>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => updateBulkNotificationReadStatusMutation.mutate({
-                        ids: Array.from(selectedDialogNotificationIds),
-                        read: true,
-                      })}
-                      disabled={selectedDialogNotificationIds.size === 0 || updateBulkNotificationReadStatusMutation.isPending}
-                    >
-                      {locale === "fr" ? "Marquer lu" : "Mark read"}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => updateBulkNotificationReadStatusMutation.mutate({
-                        ids: Array.from(selectedDialogNotificationIds),
-                        read: false,
-                      })}
-                      disabled={selectedDialogNotificationIds.size === 0 || updateBulkNotificationReadStatusMutation.isPending}
-                    >
-                      {locale === "fr" ? "Marquer non lu" : "Mark unread"}
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => deleteBulkNotificationsMutation.mutate(Array.from(selectedDialogNotificationIds))}
-                      disabled={selectedDialogNotificationIds.size === 0 || deleteBulkNotificationsMutation.isPending}
-                    >
-                      {locale === "fr" ? "Supprimer sélection" : "Delete selected"}
-                    </Button>
-                  </div>
+                  <NotificationsCriticalActions
+                    locale={locale}
+                    canEditNotifications={canEditNotifications}
+                    canDeleteNotifications={canDeleteNotifications}
+                    hasSelection={selectedDialogNotificationIds.size > 0}
+                    bulkEditPending={updateBulkNotificationReadStatusMutation.isPending}
+                    bulkDeletePending={deleteBulkNotificationsMutation.isPending}
+                    onMarkRead={() => updateBulkNotificationReadStatusMutation.mutate({
+                      ids: Array.from(selectedDialogNotificationIds),
+                      read: true,
+                    })}
+                    onMarkUnread={() => updateBulkNotificationReadStatusMutation.mutate({
+                      ids: Array.from(selectedDialogNotificationIds),
+                      read: false,
+                    })}
+                    onDeleteSelected={() => deleteBulkNotificationsMutation.mutate(Array.from(selectedDialogNotificationIds))}
+                  />
                 </div>
 
                 <div className="max-h-[52vh] overflow-auto rounded-xl border border-border/80 bg-background/70">
@@ -1094,29 +1452,29 @@ export function AdminDashboard() {
                             </td>
                             <td className="px-3 py-3 text-muted-foreground">{formatNotificationDate(notification.createdAt, locale)}</td>
                             <td className="px-3 py-3">
-                              <div className="flex items-center gap-1">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => updateNotificationReadStatusMutation.mutate({
-                                    id: notification.id,
-                                    read: !notification.read,
-                                  })}
-                                  disabled={updateNotificationReadStatusMutation.isPending}
-                                >
-                                  {notification.read
-                                    ? (locale === "fr" ? "Non lu" : "Unread")
-                                    : (locale === "fr" ? "Lu" : "Read")}
-                                </Button>
-                                <Button
-                                  variant="destructive"
-                                  size="sm"
-                                  onClick={() => deleteNotificationMutation.mutate(notification.id)}
-                                  disabled={deleteNotificationMutation.isPending}
-                                >
-                                  {locale === "fr" ? "Supprimer" : "Delete"}
-                                </Button>
-                              </div>
+                              <DropdownMenu
+                                triggerTooltip={locale === "fr" ? "Actions notification" : "Notification actions"}
+                                items={[
+                                  {
+                                    label: notification.read
+                                      ? (locale === "fr" ? "Marquer non lue" : "Mark as unread")
+                                      : (locale === "fr" ? "Marquer lue" : "Mark as read"),
+                                    icon: notification.read ? Mail : Check,
+                                    onClick: () => updateNotificationReadStatusMutation.mutate({
+                                      id: notification.id,
+                                      read: !notification.read,
+                                    }),
+                                    disabled: !canEditNotifications || updateNotificationReadStatusMutation.isPending,
+                                  },
+                                  {
+                                    label: locale === "fr" ? "Supprimer" : "Delete",
+                                    icon: Trash2,
+                                    variant: "destructive",
+                                    onClick: () => deleteNotificationMutation.mutate(notification.id),
+                                    disabled: !canDeleteNotifications || deleteNotificationMutation.isPending,
+                                  },
+                                ]}
+                              />
                             </td>
                           </tr>
                         ))
@@ -1124,6 +1482,21 @@ export function AdminDashboard() {
                     </tbody>
                   </table>
                 </div>
+
+                {(auditLogsQuery.isError || pagedAuditEntries.length === 0) && localAuditFallback.length > 0 ? (
+                  <div className="rounded-xl border border-border/80 bg-background/60 p-3">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      {locale === "fr"
+                        ? "Dernieres activites locales (fallback UI)"
+                        : "Latest local activity (UI fallback)"}
+                    </p>
+                    <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                      {localAuditFallback.map((line, index) => (
+                        <li key={`${line}-${index}`} className="truncate">{line}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
 
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-xs text-muted-foreground">
@@ -1177,7 +1550,7 @@ export function AdminDashboard() {
             </Card>
           ) : null}
 
-          {activeTab === "settings-audit" ? (
+          {activeTab === "settings-audit" && canReadAudit ? (
             <Card className="border-border/60 bg-card/70">
               <CardHeader>
                 <CardTitle>{locale === "fr" ? "Journal d'audit" : "Audit log"}</CardTitle>
@@ -1188,14 +1561,75 @@ export function AdminDashboard() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-xl border border-border/70 bg-background/80 p-3">
+                    <p className="text-xs text-muted-foreground">{locale === "fr" ? "Echecs de rafraichissement" : "Refresh token failures"}</p>
+                    <p className="mt-1 text-2xl font-semibold">{auditSummary?.refreshFailures.last24h ?? 0}</p>
+                    <p className="text-xs text-muted-foreground">{locale === "fr" ? "Fenetre 24h" : "24h window"} · {locale === "fr" ? "7j" : "7d"}: {auditSummary?.refreshFailures.last7d ?? 0} · {locale === "fr" ? "30j" : "30d"}: {auditSummary?.refreshFailures.last30d ?? 0}</p>
+                  </div>
+                  <div className="rounded-xl border border-border/70 bg-background/80 p-3">
+                    <p className="text-xs text-muted-foreground">{locale === "fr" ? "Tentatives de reutilisation" : "Suspicious reuse attempts"}</p>
+                    <p className="mt-1 text-2xl font-semibold">{auditSummary?.reuseAttempts.last24h ?? 0}</p>
+                    <p className="text-xs text-muted-foreground">{locale === "fr" ? "Fenetre 24h" : "24h window"} · {locale === "fr" ? "7j" : "7d"}: {auditSummary?.reuseAttempts.last7d ?? 0} · {locale === "fr" ? "30j" : "30d"}: {auditSummary?.reuseAttempts.last30d ?? 0}</p>
+                  </div>
+                  <div className="rounded-xl border border-border/70 bg-background/80 p-3">
+                    <p className="text-xs text-muted-foreground">{locale === "fr" ? "Revoquer les sessions" : "Session revocations"}</p>
+                    <p className="mt-1 text-2xl font-semibold">{auditSummary?.revokeSessions.last24h ?? 0}</p>
+                    <p className="text-xs text-muted-foreground">{locale === "fr" ? "Fenetre 24h" : "24h window"} · {locale === "fr" ? "7j" : "7d"}: {auditSummary?.revokeSessions.last7d ?? 0} · {locale === "fr" ? "30j" : "30d"}: {auditSummary?.revokeSessions.last30d ?? 0}</p>
+                  </div>
+                  <div className="rounded-xl border border-border/70 bg-background/80 p-3">
+                    <p className="text-xs text-muted-foreground">{locale === "fr" ? "Echecs de connexion" : "Login failures"}</p>
+                    <p className="mt-1 text-2xl font-semibold">{auditSummary?.loginFailures.last24h ?? 0}</p>
+                    <p className="text-xs text-muted-foreground">{locale === "fr" ? "Fenetre 24h" : "24h window"} · {locale === "fr" ? "7j" : "7d"}: {auditSummary?.loginFailures.last7d ?? 0} · {locale === "fr" ? "30j" : "30d"}: {auditSummary?.loginFailures.last30d ?? 0}</p>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 xl:grid-cols-2">
+                  <div className="rounded-xl border border-border/70 bg-background/80 p-3">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{locale === "fr" ? "Echecs login par IP" : "Login failures by IP"}</p>
+                    <div className="mt-2 space-y-2 text-sm">
+                      {(auditSummary?.loginFailuresBySourceIp ?? []).length === 0 ? (
+                        <p className="text-muted-foreground">-</p>
+                      ) : (
+                        auditSummary!.loginFailuresBySourceIp.map((item) => (
+                          <div key={item.key} className="flex items-center justify-between gap-2">
+                            <span className="truncate text-muted-foreground">{item.key}</span>
+                            <Badge variant="outline">{item.count}</Badge>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-border/70 bg-background/80 p-3">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{locale === "fr" ? "Actions admin par acteur" : "Admin actions by actor"}</p>
+                    <div className="mt-2 space-y-2 text-sm">
+                      {(auditSummary?.adminActionsByActor ?? []).length === 0 ? (
+                        <p className="text-muted-foreground">-</p>
+                      ) : (
+                        auditSummary!.adminActionsByActor.map((item) => (
+                          <div key={item.actorId} className="flex items-center justify-between gap-2">
+                            <span className="truncate text-muted-foreground">{item.actorEmail ?? item.actorId}</span>
+                            <Badge variant="outline">{item.count}</Badge>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm text-muted-foreground">{t.authLogHistory}</p>
-                  <Button variant="outline" size="sm" onClick={() => setShowAuditFilters((current) => !current)}>
-                    <Filter className="mr-2 h-4 w-4" />
-                    {showAuditFilters
-                      ? (locale === "fr" ? "Masquer les filtres" : "Hide filters")
-                      : (locale === "fr" ? "Afficher les filtres" : "Show filters")}
-                  </Button>
+                  <AppTooltip content={locale === "fr" ? "Afficher/masquer les filtres" : "Show/hide filters"}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={`h-9 w-9 rounded-xl text-muted-foreground transition-colors hover:bg-background/80 hover:text-foreground ${showAuditFilters ? "bg-background/80 text-foreground" : ""}`}
+                      onClick={() => setShowAuditFilters((current) => !current)}
+                      aria-label={locale === "fr" ? "Afficher/masquer les filtres" : "Show/hide filters"}
+                    >
+                      <Filter className="h-4 w-4" />
+                    </Button>
+                  </AppTooltip>
                 </div>
 
                 {showAuditFilters ? (
@@ -1288,7 +1722,19 @@ export function AdminDashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {pagedAuditEntries.length === 0 ? (
+                      {auditLogsQuery.isLoading ? (
+                        <tr>
+                          <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
+                            {locale === "fr" ? "Chargement des logs d'audit..." : "Loading audit logs..."}
+                          </td>
+                        </tr>
+                      ) : auditLogsQuery.isError ? (
+                        <tr>
+                          <td colSpan={6} className="px-3 py-8 text-center text-destructive">
+                            {locale === "fr" ? "Impossible de charger les logs d'audit." : "Unable to load audit logs."}
+                          </td>
+                        </tr>
+                      ) : pagedAuditEntries.length === 0 ? (
                         <tr>
                           <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
                             {t.noLogsYet}
@@ -1386,9 +1832,12 @@ export function AdminDashboard() {
           ) : null}
         </main>
 
-        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 px-2 py-2 backdrop-blur md:hidden">
-          <div className="grid grid-cols-5 gap-2">
-            {mobileMenuGroups.map((item) => {
+        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 px-2 pt-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] shadow-[0_-8px_24px_-12px_rgba(0,0,0,0.35)] backdrop-blur md:hidden">
+          <div
+            className="grid gap-2"
+            style={{ gridTemplateColumns: `repeat(${Math.max(primaryMobileMenuGroups.length + (overflowMobileMenuGroups.length > 0 ? 1 : 0) + 1, 1)}, minmax(0, 1fr))` }}
+          >
+            {primaryMobileMenuGroups.map((item) => {
               const Icon = item.icon;
               const isActive = activeMobileGroup.id === item.id;
               return (
@@ -1396,7 +1845,7 @@ export function AdminDashboard() {
                   <Button
                     variant={isActive ? "default" : "ghost"}
                     size="sm"
-                    className="h-12 flex-col gap-1"
+                    className="h-12 flex-col gap-1 rounded-2xl"
                     onClick={() => selectMobileGroup(item)}
                   >
                     <Icon className="h-4 w-4" />
@@ -1405,8 +1854,90 @@ export function AdminDashboard() {
                 </AppTooltip>
               );
             })}
+
+            {overflowMobileMenuGroups.length > 0 ? (
+              <AppTooltip content={locale === "fr" ? "Plus" : "More"} side="top">
+                <Button
+                  variant={mobileOverflowOpen || isMoreActive ? "default" : "ghost"}
+                  size="sm"
+                  className="h-12 flex-col gap-1 rounded-2xl"
+                  onClick={() => setMobileOverflowOpen((current) => !current)}
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                  <span className="text-[11px]">{locale === "fr" ? "Plus" : "More"}</span>
+                </Button>
+              </AppTooltip>
+            ) : null}
+
+            <AppTooltip content={locale === "fr" ? "Deconnexion" : "Logout"} side="top">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-12 flex-col gap-1 rounded-2xl"
+                onClick={() => setLogoutConfirmOpen(true)}
+              >
+                <LogOut className="h-4 w-4" />
+                <span className="text-[11px]">{locale === "fr" ? "Logout" : "Logout"}</span>
+              </Button>
+            </AppTooltip>
           </div>
         </nav>
+
+        {mobileOverflowOpen && overflowMobileMenuGroups.length > 0 ? (
+          <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
+            <button
+              className="absolute inset-0 bg-black/40"
+              aria-label={locale === "fr" ? "Fermer le menu" : "Close menu"}
+              onClick={() => setMobileOverflowOpen(false)}
+            />
+            <aside className="absolute right-0 top-0 h-full w-[84vw] max-w-sm border-l border-border bg-background p-4 shadow-2xl">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  {locale === "fr" ? "Navigation" : "Navigation"}
+                </h3>
+                <Button variant="ghost" size="sm" className="h-8 w-8 rounded-full p-0" onClick={() => setMobileOverflowOpen(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <div className="space-y-3 overflow-y-auto pb-6">
+                {overflowMobileMenuGroups.map((group) => {
+                  const GroupIcon = group.icon;
+                  const isGroupActive = activeMobileGroup?.id === group.id;
+                  return (
+                    <div key={group.id} className="rounded-2xl border border-border/70 bg-card/60 p-3">
+                      <button
+                        type="button"
+                        className="flex w-full items-center justify-between gap-2 text-left"
+                        onClick={() => selectMobileGroup(group)}
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <GroupIcon className="h-4 w-4 text-primary" />
+                          <span className="text-sm font-semibold">{group.label}</span>
+                        </span>
+                        {isGroupActive ? <Check className="h-4 w-4 text-primary" /> : null}
+                      </button>
+                    </div>
+                  );
+                })}
+
+                <div className="rounded-2xl border border-border/70 bg-card/60 p-3">
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 text-left"
+                    onClick={() => {
+                      setMobileOverflowOpen(false);
+                      setLogoutConfirmOpen(true);
+                    }}
+                  >
+                    <LogOut className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-semibold">{locale === "fr" ? "Deconnexion" : "Logout"}</span>
+                  </button>
+                </div>
+              </div>
+            </aside>
+          </div>
+        ) : null}
       </div>
 
       <Dialog open={logoutConfirmOpen} onOpenChange={setLogoutConfirmOpen}>
@@ -1459,8 +1990,20 @@ export function AdminDashboard() {
                 <p>{currentAuditDetail.status}</p>
               </div>
               <div className="rounded-lg border border-border/70 bg-background/70 p-3">
+                <p className="text-xs text-muted-foreground">{locale === "fr" ? "Resultat" : "Outcome"}</p>
+                <p>{currentAuditDetail.outcome || "-"}</p>
+              </div>
+              <div className="rounded-lg border border-border/70 bg-background/70 p-3">
                 <p className="text-xs text-muted-foreground">{locale === "fr" ? "Message" : "Message"}</p>
                 <p>{currentAuditDetail.message || "-"}</p>
+              </div>
+              <div className="rounded-lg border border-border/70 bg-background/70 p-3">
+                <p className="text-xs text-muted-foreground">Correlation ID</p>
+                <p className="break-all">{currentAuditDetail.correlationId || "-"}</p>
+              </div>
+              <div className="rounded-lg border border-border/70 bg-background/70 p-3">
+                <p className="text-xs text-muted-foreground">{locale === "fr" ? "Code raison" : "Reason code"}</p>
+                <p>{currentAuditDetail.reasonCode || "-"}</p>
               </div>
               <div className="rounded-lg border border-border/70 bg-background/70 p-3">
                 <p className="text-xs text-muted-foreground">{locale === "fr" ? "Log brut" : "Raw log"}</p>

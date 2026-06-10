@@ -3,8 +3,8 @@
 import { useEffect, useRef } from "react";
 import { useDashboardStore } from "@/store/dashboard-store";
 
-const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
-const WARNING_TIMEOUT_MS = 4 * 60 * 1000; // 4 minutes 30 secondes (30s avant verrouillage)
+const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+const WARNING_TIMEOUT_MS = 14 * 60 * 1000; // 14 minutes 30 secondes (30s avant verrouillage)
 
 /**
  * Hook qui détecte l'inactivité et verrouille automatiquement la session

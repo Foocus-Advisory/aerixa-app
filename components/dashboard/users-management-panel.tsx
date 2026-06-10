@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Download,
+  Eye,
   FileSpreadsheet,
   Filter,
   KeyRound,
@@ -32,7 +33,9 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useToast } from "@/components/ui/toast-provider";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { AppTooltip } from "@/components/ui/tooltip";
+import { hasPermission } from "@/lib/permissions";
 import { getGradientButtonClass } from "@/lib/button-gradients";
+import { UsersCriticalActions } from "@/components/dashboard/users-critical-actions";
 import {
   Dialog,
   DialogContent,
@@ -48,6 +51,7 @@ type UsersManagementPanelProps = {
   accessToken: string;
   locale: Locale;
   onLog: (entry: string) => void;
+  permissionSet?: Set<string>;
 };
 
 type UserCreationRole = "ADMIN" | "OPERATOR";
@@ -99,6 +103,66 @@ const phonePrefixes = [
   { label: "🇩🇿 +213", value: "+213", keywords: ["algerie", "algeria", "dz", "+213"] },
   { label: "🇲🇦 +212", value: "+212", keywords: ["maroc", "morocco", "ma", "+212"] },
 ] as const;
+
+// Component to render user avatar with profile photo fallback
+type UserAvatarCellProps = {
+  user: UserResponse;
+  accessToken: string;
+  initials: string;
+  gradientClass: string;
+  fullName: string;
+};
+
+function UserAvatarCell({ user, accessToken, initials, gradientClass, fullName }: UserAvatarCellProps) {
+  const [photoUrl, setPhotoUrl] = useState<string>("");
+  const [photoFailed, setPhotoFailed] = useState(false);
+
+  useEffect(() => {
+    if (!user.profilePhotoUrl || !accessToken || photoFailed) {
+      return;
+    }
+
+    let isMounted = true;
+    let objectUrl = "";
+
+    (async () => {
+      try {
+        const blob = await api.users.getProfilePhotoBlob(accessToken, user.profilePhotoUrl);
+        if (!isMounted) return;
+        objectUrl = URL.createObjectURL(blob);
+        setPhotoUrl(objectUrl);
+      } catch {
+        if (isMounted) {
+          setPhotoFailed(true);
+        }
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [user.profilePhotoUrl, accessToken, photoFailed]);
+
+  return (
+    <div className="flex items-center gap-2">
+      {photoUrl ? (
+        <img
+          src={photoUrl}
+          alt={fullName}
+          className="h-8 w-8 rounded-full object-cover"
+        />
+      ) : (
+        <span className={`inline-flex h-8 w-8 items-center justify-center rounded-full ${gradientClass} text-xs font-semibold text-white`}>
+          {initials}
+        </span>
+      )}
+      <span className="font-medium">{fullName}</span>
+    </div>
+  );
+}
 
 const importFieldMeta: Record<ImportFieldKey, { required: boolean; labelKey: string }> = {
   email: { required: true, labelKey: "usersFieldEmail" },
@@ -176,6 +240,22 @@ function initials(user: UserResponse) {
     return parts[0].slice(0, 2).toUpperCase();
   }
   return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+}
+
+function getAvatarGradient(userId: string): string {
+  // Déterministe: même userId = même couleur
+  const colors = [
+    "bg-blue-500",
+    "bg-purple-500",
+    "bg-emerald-500",
+    "bg-amber-500",
+    "bg-rose-500",
+    "bg-indigo-500",
+    "bg-teal-500",
+    "bg-fuchsia-500",
+  ];
+  const hash = userId.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  return colors[hash % colors.length];
 }
 
 function statusLabel(status: UserResponse["status"], t: Record<string, string>) {
@@ -296,9 +376,19 @@ function buildMappedImportFile(
   });
 }
 
-export function UsersManagementPanel({ accessToken, locale, onLog }: UsersManagementPanelProps) {
+export function UsersManagementPanel({ accessToken, locale, onLog, permissionSet }: UsersManagementPanelProps) {
   const t = dictionaries[locale];
   const { toast } = useToast();
+  const permissions = permissionSet ?? new Set<string>();
+  const canReadUsers = hasPermission(permissions, "users:read_all") || hasPermission(permissions, "users:read_children");
+  const canCreateUsers = hasPermission(permissions, "users:create");
+  const canEditUsers = hasPermission(permissions, "users:edit");
+  const canDeleteUsers = hasPermission(permissions, "users:delete");
+  const canHardDeleteUsers = hasPermission(permissions, "users:hard_delete");
+  const canToggleUsers = hasPermission(permissions, "users:toggle_active");
+  const canRevokeUserSessions = hasPermission(permissions, "users:revoke_sessions");
+  const canResetUserPassword = hasPermission(permissions, "users:reset_password");
+  const canAssignParent = hasPermission(permissions, "users:assign_parent");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editUserId, setEditUserId] = useState<string>("");
@@ -353,25 +443,31 @@ export function UsersManagementPanel({ accessToken, locale, onLog }: UsersManage
   const [assignRoleTargetId, setAssignRoleTargetId] = useState("");
   const [assignRoleTargetEmail, setAssignRoleTargetEmail] = useState("");
   const [assignRoleValue, setAssignRoleValue] = useState("");
+  const [assignParentDialogOpen, setAssignParentDialogOpen] = useState(false);
+  const [assignParentTargetId, setAssignParentTargetId] = useState("");
+  const [assignParentTargetEmail, setAssignParentTargetEmail] = useState("");
+  const [assignParentValue, setAssignParentValue] = useState("");
+  const [viewUserDialogOpen, setViewUserDialogOpen] = useState(false);
+  const [viewUser, setViewUser] = useState<UserResponse | null>(null);
 
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const usersQuery = useQuery({
     queryKey: ["users", accessToken, page, pageSize, statusFilter],
     queryFn: () => api.users.list(accessToken, page, pageSize, statusFilter),
-    enabled: Boolean(accessToken),
+    enabled: Boolean(accessToken && canReadUsers),
   });
 
   const statsQuery = useQuery({
     queryKey: ["users", "stats", accessToken],
     queryFn: () => api.users.stats(accessToken),
-    enabled: Boolean(accessToken),
+    enabled: Boolean(accessToken && canReadUsers),
   });
 
   const adminsQuery = useQuery({
     queryKey: ["users", "admins", accessToken],
     queryFn: () => api.users.list(accessToken, 0, 200, "ALL"),
-    enabled: Boolean(accessToken) && createDialogOpen,
+    enabled: Boolean(accessToken && canReadUsers) && (createDialogOpen || assignParentDialogOpen),
   });
 
   const toggleStatusMutation = useMutation({
@@ -552,6 +648,31 @@ export function UsersManagementPanel({ accessToken, locale, onLog }: UsersManage
     },
   });
 
+  const assignParentMutation = useMutation({
+    mutationFn: ({ id, parentAdminId }: { id: string; parentAdminId: string }) =>
+      api.users.assignParentAdmin(accessToken, id, { parentAdminId }),
+    onSuccess: async (user) => {
+      await Promise.all([usersQuery.refetch(), statsQuery.refetch()]);
+      onLog(`ASSIGN PARENT ADMIN OK: ${user.email} -> ${user.parentAdminEmail ?? user.parentAdminDisplayName ?? "N/A"}`);
+      toast({
+        variant: "success",
+        title: locale === "fr" ? "Parent admin affecte" : "Parent admin assigned",
+        description: user.email,
+      });
+      setAssignParentDialogOpen(false);
+      setAssignParentTargetId("");
+      setAssignParentTargetEmail("");
+      setAssignParentValue("");
+    },
+    onError: (error) => {
+      toast({
+        variant: "error",
+        title: locale === "fr" ? "Affectation parent impossible" : "Unable to assign parent",
+        description: (error as Error).message,
+      });
+    },
+  });
+
   const exportMutation = useMutation({
     mutationFn: () => api.users.exportExcel(accessToken, statusFilter),
     onSuccess: (payload) => {
@@ -698,10 +819,10 @@ export function UsersManagementPanel({ accessToken, locale, onLog }: UsersManage
         .filter((user) => user.roles.includes("ADMIN") || user.roles.includes("SUPER_ADMIN"))
         .map((user) => ({
           value: user.id,
-          label: `${fullName(user, locale)} - ${user.email}`,
+          label: `${fullName(user, t.usersNameMissing)} - ${user.email}`,
           keywords: [user.email, ...(user.roles ?? [])],
         })),
-    [adminsQuery.data?.content, locale],
+    [adminsQuery.data?.content, t.usersNameMissing],
   );
 
   const createUserFormReady =
@@ -926,6 +1047,13 @@ export function UsersManagementPanel({ accessToken, locale, onLog }: UsersManage
     setAssignRoleDialogOpen(true);
   };
 
+  const openAssignParentDialog = (user: UserResponse) => {
+    setAssignParentTargetId(user.id);
+    setAssignParentTargetEmail(user.email);
+    setAssignParentValue(user.parentAdminId ?? "");
+    setAssignParentDialogOpen(true);
+  };
+
   const confirmAssignRole = () => {
     if (!assignRoleTargetId || !assignRoleValue) {
       return;
@@ -934,6 +1062,17 @@ export function UsersManagementPanel({ accessToken, locale, onLog }: UsersManage
     assignRoleMutation.mutate({
       id: assignRoleTargetId,
       role: assignRoleValue,
+    });
+  };
+
+  const confirmAssignParent = () => {
+    if (!assignParentTargetId || !assignParentValue) {
+      return;
+    }
+
+    assignParentMutation.mutate({
+      id: assignParentTargetId,
+      parentAdminId: assignParentValue,
     });
   };
 
@@ -998,30 +1137,22 @@ export function UsersManagementPanel({ accessToken, locale, onLog }: UsersManage
               </Button>
             </AppTooltip>
 
-            <AppTooltip content={t.usersActionTemplate}>
-              <Button variant="ghost" size="sm" className="h-9 w-9 rounded-xl text-muted-foreground hover:bg-background/80 hover:text-foreground" onClick={() => templateMutation.mutate()} disabled={templateMutation.isPending}>
-                <FileSpreadsheet className="h-4 w-4" />
-              </Button>
-            </AppTooltip>
-
-            <AppTooltip content={t.usersActionExport}>
-              <Button variant="ghost" size="sm" className="h-9 w-9 rounded-xl text-muted-foreground hover:bg-background/80 hover:text-foreground" onClick={() => exportMutation.mutate()} disabled={exportMutation.isPending}>
-                <Download className="h-4 w-4" />
-              </Button>
-            </AppTooltip>
-
-            <AppTooltip content={t.usersActionImport}>
-              <Button variant="ghost" size="sm" className="h-9 w-9 rounded-xl text-muted-foreground hover:bg-background/80 hover:text-foreground" onClick={() => setImportDialogOpen(true)} disabled={importMutation.isPending}>
-                <Upload className="h-4 w-4" />
-              </Button>
-            </AppTooltip>
-
-            <AppTooltip content={t.usersActionAddUser}>
-              <Button className={getGradientButtonClass("primary")} onClick={() => setCreateDialogOpen(true)}>
-                <Plus className="h-4 w-4" />
-                {t.usersActionAdd}
-              </Button>
-            </AppTooltip>
+            <UsersCriticalActions
+              canCreateUsers={canCreateUsers}
+              canReadUsers={canReadUsers}
+              templatePending={templateMutation.isPending}
+              exportPending={exportMutation.isPending}
+              importPending={importMutation.isPending}
+              templateTooltip={t.usersActionTemplate}
+              exportTooltip={t.usersActionExport}
+              importTooltip={t.usersActionImport}
+              addTooltip={t.usersActionAddUser}
+              addLabel={t.usersActionAdd}
+              onTemplate={() => templateMutation.mutate()}
+              onExport={() => exportMutation.mutate()}
+              onImport={() => setImportDialogOpen(true)}
+              onCreate={() => setCreateDialogOpen(true)}
+            />
           </div>
         </div>
 
@@ -1268,6 +1399,48 @@ export function UsersManagementPanel({ accessToken, locale, onLog }: UsersManage
               >
                 <KeyRound className="h-4 w-4" />
                 {assignRoleMutation.isPending
+                  ? (locale === "fr" ? "Affectation..." : "Assigning...")
+                  : (locale === "fr" ? "Affecter" : "Assign")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={assignParentDialogOpen} onOpenChange={setAssignParentDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{locale === "fr" ? "Affecter un parent admin" : "Assign parent admin"}</DialogTitle>
+              <DialogDescription>
+                {locale === "fr"
+                  ? "Selectionnez l'ADMIN ou SUPER_ADMIN parent pour cet utilisateur OPERATOR."
+                  : "Select the ADMIN or SUPER_ADMIN parent for this OPERATOR user."}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="grid gap-3">
+              <div className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                {assignParentTargetEmail}
+              </div>
+              <SearchableSelect
+                value={assignParentValue}
+                onValueChange={(value) => setAssignParentValue(value)}
+                options={adminOptions}
+                placeholder={t.usersPlaceholderSelectParentAdmin}
+                searchPlaceholder={t.usersPlaceholderSearchAdmin}
+              />
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAssignParentDialogOpen(false)}>
+                {t.usersCancel}
+              </Button>
+              <Button
+                className={getGradientButtonClass("primary")}
+                onClick={confirmAssignParent}
+                disabled={!assignParentValue || assignParentMutation.isPending}
+              >
+                <UserCheck className="h-4 w-4" />
+                {assignParentMutation.isPending
                   ? (locale === "fr" ? "Affectation..." : "Assigning...")
                   : (locale === "fr" ? "Affecter" : "Assign")}
               </Button>
@@ -1524,6 +1697,66 @@ export function UsersManagementPanel({ accessToken, locale, onLog }: UsersManage
           </DialogContent>
         </Dialog>
 
+        <Dialog open={viewUserDialogOpen} onOpenChange={setViewUserDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>{locale === "fr" ? "Détail de l'utilisateur" : "User details"}</DialogTitle>
+              <DialogDescription>{viewUser?.email}</DialogDescription>
+            </DialogHeader>
+            {viewUser && (
+              <div className="grid gap-3 py-2">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="space-y-0.5">
+                    <p className="text-xs text-muted-foreground">{locale === "fr" ? "Prénom" : "First name"}</p>
+                    <p>{viewUser.firstName ?? "—"}</p>
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-xs text-muted-foreground">{locale === "fr" ? "Nom" : "Last name"}</p>
+                    <p>{viewUser.lastName ?? "—"}</p>
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-xs text-muted-foreground">Email</p>
+                    <p className="break-all">{viewUser.email}</p>
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-xs text-muted-foreground">{locale === "fr" ? "Rôles" : "Roles"}</p>
+                    <p>{viewUser.roles.join(", ")}</p>
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-xs text-muted-foreground">{locale === "fr" ? "Statut" : "Status"}</p>
+                    <p>{viewUser.status}</p>
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-xs text-muted-foreground">{locale === "fr" ? "Admin parent" : "Parent admin"}</p>
+                    <p>{viewUser.parentAdminDisplayName ?? viewUser.parentAdminEmail ?? "—"}</p>
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-xs text-muted-foreground">{locale === "fr" ? "Créé par" : "Created by"}</p>
+                    <p>{viewUser.createdByLabel ?? "—"}</p>
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-xs text-muted-foreground">{locale === "fr" ? "Modifié par" : "Updated by"}</p>
+                    <p>{viewUser.updatedByLabel ?? "—"}</p>
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-xs text-muted-foreground">{locale === "fr" ? "Créé le" : "Created at"}</p>
+                    <p>{new Date(viewUser.createdAt).toLocaleString(locale === "fr" ? "fr-FR" : "en-US")}</p>
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-xs text-muted-foreground">{locale === "fr" ? "Modifié le" : "Updated at"}</p>
+                    <p>{new Date(viewUser.updatedAt).toLocaleString(locale === "fr" ? "fr-FR" : "en-US")}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setViewUserDialogOpen(false)}>
+                {locale === "fr" ? "Fermer" : "Close"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <div className="overflow-x-auto rounded-xl border border-border/80 bg-background/70 [overflow-clip-margin:visible]">
           <table className="w-full min-w-5xl text-left text-sm">
             <thead className="bg-muted/70 text-xs uppercase tracking-wide text-muted-foreground">
@@ -1538,19 +1771,20 @@ export function UsersManagementPanel({ accessToken, locale, onLog }: UsersManage
                 <th className="px-3 py-3">{t.usersTableParentAdmin}</th>
                 <th className="px-3 py-3">{t.usersTableLastLogin}</th>
                 <th className="px-3 py-3">{t.usersTableCreatedAt}</th>
+                <th className="px-3 py-3">{t.usersTableCreatedBy}</th>
                 <th className="px-3 py-3">{t.usersTableActions}</th>
               </tr>
             </thead>
             <tbody>
               {usersQuery.isFetching && users.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">
+                  <td colSpan={10} className="px-3 py-8 text-center text-muted-foreground">
                     {t.usersLoading}
                   </td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">
+                  <td colSpan={10} className="px-3 py-8 text-center text-muted-foreground">
                     {t.usersNoData}
                   </td>
                 </tr>
@@ -1570,12 +1804,13 @@ export function UsersManagementPanel({ accessToken, locale, onLog }: UsersManage
                         />
                       </td>
                       <td className="px-3 py-3">
-                        <div className="flex items-center gap-2">
-                          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-semibold">
-                            {initials(user)}
-                          </span>
-                          <span className="font-medium">{fullName(user, t.usersNameMissing)}</span>
-                        </div>
+                        <UserAvatarCell
+                          user={user}
+                          accessToken={accessToken}
+                          initials={initials(user)}
+                          gradientClass={getAvatarGradient(user.id)}
+                          fullName={fullName(user, t.usersNameMissing)}
+                        />
                       </td>
                       <td className="px-3 py-3 text-muted-foreground">{user.email}</td>
                       <td className="px-3 py-3">
@@ -1601,6 +1836,7 @@ export function UsersManagementPanel({ accessToken, locale, onLog }: UsersManage
                       </td>
                       <td className="px-3 py-3 text-muted-foreground">{formatDate(user.lastLoginAt, locale, t.usersNever)}</td>
                       <td className="px-3 py-3 text-muted-foreground">{formatDate(user.createdAt, locale, t.usersNever)}</td>
+                      <td className="px-3 py-3 text-xs text-muted-foreground">{user.createdByLabel ?? "—"}</td>
                       <td className="px-3 py-3">
                         <DropdownMenu
                           triggerTooltip={t.usersActionsMenu}
@@ -1610,35 +1846,46 @@ export function UsersManagementPanel({ accessToken, locale, onLog }: UsersManage
                                   label: t.usersActionRestore,
                                   icon: RotateCcw,
                                   onClick: () => restoreMutation.mutate(user.id),
-                                  disabled: restoreMutation.isPending,
+                                  disabled: !canDeleteUsers || restoreMutation.isPending,
                                 },
                                 {
                                   label: t.usersActionHardDelete,
                                   icon: Trash2,
                                   variant: "destructive",
                                   onClick: () => openDeleteConfirmation(user.id, user.email, "hard"),
-                                  disabled: hardDeleteMutation.isPending,
+                                  disabled: !canHardDeleteUsers || hardDeleteMutation.isPending,
                                 },
                               ]
                             : [
                                 {
+                                  label: locale === "fr" ? "Consulter" : "View",
+                                  icon: Eye,
+                                  onClick: () => { setViewUser(user); setViewUserDialogOpen(true); },
+                                },
+                                {
                                   label: t.usersActionEdit,
                                   icon: Pencil,
                                   onClick: () => openEditDialog(user),
-                                  disabled: updateUserMutation.isPending,
+                                  disabled: !canEditUsers || updateUserMutation.isPending,
                                 },
                                 {
                                   label: locale === "fr" ? "Affecter role" : "Assign role",
                                   icon: KeyRound,
                                   onClick: () => openAssignRoleDialog(user),
-                                  disabled: assignRoleMutation.isPending,
+                                  disabled: !canEditUsers || assignRoleMutation.isPending,
+                                },
+                                {
+                                  label: locale === "fr" ? "Affecter parent admin" : "Assign parent admin",
+                                  icon: UserCheck,
+                                  onClick: () => openAssignParentDialog(user),
+                                  disabled: !canAssignParent || !user.roles.includes("OPERATOR") || assignParentMutation.isPending,
                                 },
                                 {
                                   label: t.usersActionDelete,
                                   icon: Trash2,
                                   variant: "destructive",
                                   onClick: () => openDeleteConfirmation(user.id, user.email, "soft"),
-                                  disabled: softDeleteMutation.isPending,
+                                  disabled: !canDeleteUsers || softDeleteMutation.isPending,
                                 },
                                 {
                                   label:
@@ -1647,25 +1894,25 @@ export function UsersManagementPanel({ accessToken, locale, onLog }: UsersManage
                                       : t.usersActionDisable,
                                   icon: user.status === "DISABLED" ? UserCheck : UserX,
                                   onClick: () => toggleStatusMutation.mutate(user.id),
-                                  disabled: toggleStatusMutation.isPending,
+                                  disabled: !canToggleUsers || toggleStatusMutation.isPending,
                                 },
                                 {
                                   label: t.usersActionRevokeSessions,
                                   icon: ShieldX,
                                   onClick: () => revokeSessionsMutation.mutate(user.id),
-                                  disabled: revokeSessionsMutation.isPending,
+                                  disabled: !canRevokeUserSessions || revokeSessionsMutation.isPending,
                                 },
                                 {
                                   label: t.usersActionResendInitialMail,
                                   icon: Mail,
                                   onClick: () => resendInitialPasswordMutation.mutate(user.id),
-                                  disabled: resendInitialPasswordMutation.isPending || !canResendInitialPassword,
+                                  disabled: !canResetUserPassword || resendInitialPasswordMutation.isPending || !canResendInitialPassword,
                                 },
                                 {
                                   label: t.usersActionResetPassword || "Réinitialiser mot de passe",
                                   icon: RotateCcw,
                                   onClick: () => openResetPasswordDialog(user.id, user.email),
-                                  disabled: resetPasswordMutation.isPending,
+                                  disabled: !canResetUserPassword || resetPasswordMutation.isPending,
                                 },
                               ]}
                         />
