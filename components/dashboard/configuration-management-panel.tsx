@@ -46,7 +46,10 @@ export function ConfigurationManagementPanel({ accessToken, locale, onLog }: Con
   const safePage = Math.min(page, totalPages - 1);
   const pagedEstablishments = filteredEstablishments.slice(safePage * pageSize, safePage * pageSize + pageSize);
 
-  const effectiveEstablishmentId = selectedEstablishmentId || pagedEstablishments[0]?.id || filteredEstablishments[0]?.id || "";
+  const effectiveEstablishmentId = useMemo(
+    () => selectedEstablishmentId || pagedEstablishments[0]?.id || filteredEstablishments[0]?.id || "",
+    [selectedEstablishmentId, pagedEstablishments, filteredEstablishments],
+  );
 
   const selectedEstablishment = useMemo(
     () => (establishmentsQuery.data ?? []).find((item) => item.id === effectiveEstablishmentId),
