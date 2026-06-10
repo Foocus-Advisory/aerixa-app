@@ -8,25 +8,22 @@ import { isTokenExpired } from "@/lib/jwt-utils";
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { accessToken, loadTokensFromStorage } = useDashboardStore();
+  const { accessToken, loadTokensFromStorage, setActiveTab } = useDashboardStore();
   const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
-    // Charger les tokens du sessionStorage en priorité (au cas où c'est un refresh de page)
     loadTokensFromStorage();
     setIsHydrated(true);
   }, [loadTokensFromStorage]);
 
   useEffect(() => {
-    if (!isHydrated) {
-      return;
-    }
-
-    // Vérifier que le token existe et n'est pas expiré
+    if (!isHydrated) return;
     if (!accessToken || isTokenExpired(accessToken)) {
       router.replace("/login?reason=auth_required");
+      return;
     }
-  }, [accessToken, isHydrated, router]);
+    setActiveTab("dashboard");
+  }, [isHydrated, accessToken, router, setActiveTab]);
 
   if (!isHydrated || !accessToken || isTokenExpired(accessToken)) {
     return null;

@@ -1,12 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { getAuthErrorToast } from "@/lib/auth-error-toast";
 import { dictionaries } from "@/lib/i18n";
+import { isTokenExpired } from "@/lib/jwt-utils";
 import { useDashboardStore } from "@/store/dashboard-store";
+import type { LoginResponse } from "@/lib/types";
+import { GoogleAuthButton } from "@/components/auth/google-auth-button";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/password-input";
 import { useToast } from "@/components/ui/toast-provider";
@@ -15,10 +18,46 @@ import { Lock } from "lucide-react";
 
 export default function SessionLockedPage() {
   const router = useRouter();
-  const { userEmail, locale, unlockSession, setTokens } = useDashboardStore();
+  const { userEmail, locale, sessionLocked, accessToken, preLockPath, unlockSession, setTokens, setUserEmail, setUnlockingInProgress } = useDashboardStore();
   const { toast } = useToast();
   const t = dictionaries[locale];
   const [password, setPassword] = useState("");
+
+  useEffect(() => {
+    if (!sessionLocked && accessToken && !isTokenExpired(accessToken)) {
+      // Réinitialiser le flag de déverrouillage en cours
+      setUnlockingInProgress(false);
+      router.replace("/dashboard");
+    }
+  }, [sessionLocked, accessToken, router, setUnlockingInProgress]);
+
+  const handleUnlockSuccess = (data: LoginResponse) => {
+    if (data.mfaRequired && data.mfaChallengeId) {
+      setUnlockingInProgress(true);
+      router.push(`/login/mfa?challengeId=${data.mfaChallengeId}&unlock=1`);
+      return;
+    }
+
+    if (!data.accessToken || !data.refreshToken) {
+      toast({
+        variant: "error",
+        title: t.sessionLockedError,
+        description: locale === "fr"
+          ? "La réponse d'authentification est incomplète."
+          : "Authentication response is incomplete.",
+      });
+      return;
+    }
+
+    // Marquer le déverrouillage comme en cours (grâce period pour éviter les race conditions)
+    setUnlockingInProgress(true);
+    setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
+    if (data.user?.email) {
+      setUserEmail(data.user.email);
+    }
+    unlockSession();
+    router.push(preLockPath || "/dashboard");
+  };
 
   const unlockMutation = useMutation({
     mutationFn: () => {
@@ -27,14 +66,7 @@ export default function SessionLockedPage() {
       }
       return api.auth.login({ email: userEmail, password });
     },
-    onSuccess: (data) => {
-      // Mettre à jour les tokens
-      setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
-      // Débloquer la session
-      unlockSession();
-      // Rediriger vers le dashboard
-      router.push("/dashboard");
-    },
+    onSuccess: handleUnlockSuccess,
     onError: (error) => {
       const message = getAuthErrorToast(error, locale);
       toast({
@@ -110,6 +142,8 @@ export default function SessionLockedPage() {
           >
             {unlockMutation.isPending ? t.sessionLockedVerifying : t.sessionLockedReconnect}
           </Button>
+
+          <GoogleAuthButton locale={locale} mode="login" onSuccess={handleUnlockSuccess} buttonWidth={260} compact />
         </form>
 
         {/* Lien logout */}

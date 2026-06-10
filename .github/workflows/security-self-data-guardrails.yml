@@ -1,0 +1,25 @@
+name: Security Self Data Guardrails
+
+on:
+  pull_request:
+    paths:
+      - "app/**"
+      - "components/**"
+      - "lib/**"
+      - "hooks/**"
+      - "store/**"
+      - "scripts/security-self-data-guardrails.mjs"
+      - "package.json"
+      - ".github/PULL_REQUEST_TEMPLATE.md"
+      - ".github/workflows/security-self-data-guardrails.yml"
+
+jobs:
+  self-data-policy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run self data guardrails
+        run: npm run security:self-data

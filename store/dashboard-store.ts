@@ -13,8 +13,10 @@ interface DashboardState {
   refreshToken: string;
   activeTab: string;
   sessionLocked: boolean;
+  isUnlockingInProgress: boolean; // Flag pour éviter les race conditions lors du déverrouillage
   lastActivityTime: number;
   userEmail: string; // Pour l'affichage à la page session-locked
+  preLockPath: string; // Chemin exact avant le verrouillage de session
   setLocale: (locale: Locale) => void;
   setTheme: (theme: "light" | "dark") => void;
   setTokens: (tokens: { accessToken: string; refreshToken: string }) => void;
@@ -23,8 +25,10 @@ interface DashboardState {
   loadTokensFromStorage: () => void;
   lockSession: () => void;
   unlockSession: () => void;
+  setUnlockingInProgress: (inProgress: boolean) => void;
   updateActivity: () => void;
   setUserEmail: (email: string) => void;
+  setPreLockPath: (path: string) => void;
 }
 
 export const useDashboardStore = create<DashboardState>()(
@@ -36,8 +40,10 @@ export const useDashboardStore = create<DashboardState>()(
       refreshToken: "",
       activeTab: "dashboard",
       sessionLocked: false,
+      isUnlockingInProgress: false,
       lastActivityTime: Date.now(),
       userEmail: "",
+      preLockPath: "/dashboard",
       setLocale: (locale) => set({ locale }),
       setTheme: (theme) => set({ theme }),
       setTokens: ({ accessToken, refreshToken }) => {
@@ -74,6 +80,9 @@ export const useDashboardStore = create<DashboardState>()(
           window.sessionStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString());
         }
       },
+      setUnlockingInProgress: (inProgress) => {
+        set({ isUnlockingInProgress: inProgress });
+      },
       updateActivity: () => {
         const now = Date.now();
         set({ lastActivityTime: now });
@@ -82,11 +91,12 @@ export const useDashboardStore = create<DashboardState>()(
         }
       },
       setUserEmail: (email) => set({ userEmail: email }),
+      setPreLockPath: (path) => set({ preLockPath: path }),
     }),
     {
       name: "aerixa-dashboard",
       // Tokens exclus intentionnellement : ne pas persister des credentials en localStorage
-      partialize: (state) => ({ locale: state.locale, theme: state.theme, activeTab: state.activeTab }),
+      partialize: (state) => ({ locale: state.locale, theme: state.theme, activeTab: state.activeTab, preLockPath: state.preLockPath }),
     },
   ),
 );

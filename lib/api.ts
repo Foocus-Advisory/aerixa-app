@@ -1,21 +1,63 @@
 import type {
+  AcademicLevelResponse,
+  AcquisitionChannelImportResultResponse,
+  AcquisitionChannelResponse,
+  AssignParentAdminRequest,
   ApiSuccessResponse,
   ChangePasswordRequest,
+  CreateAcademicLevelRequest,
+  CreateAcquisitionChannelRequest,
+  CreateEntryDiplomaRequest,
+  CreateEstablishmentRequest,
+  CreateFunnelStageRequest,
+  CreateFunnelStageTransitionRequest,
+  CreateProgramTrackLevelRequest,
+  CreateProgramTrackRequest,
   CreateUserRequest,
+  EntryDiplomaResponse,
+  EstablishmentResponse,
+  FunnelStageImportResultResponse,
+  FunnelStageResponse,
+  FunnelStageTransitionResponse,
+  GoogleAuthConfigResponse,
+  GoogleAuthRequest,
   UpdateProfileRequest,
+  UpdateAcademicLevelRequest,
+  UpdateAcquisitionChannelRequest,
+  UpdateEntryDiplomaRequest,
+  UpdateEstablishmentRequest,
+  UpdateFunnelStageRequest,
+  UpdateFunnelStageTransitionRequest,
+  UpdatePipelineViewPreferenceRequest,
+  UpdateProgramTrackLevelRequest,
+  UpdateProgramTrackRequest,
   UpdateUserRequest,
   LoginRequest,
   LoginResponse,
+  MfaVerifyRequest,
   PagedResponse,
   PasswordResetRequestResult,
+  PipelineViewPreferenceResponse,
   NotificationBulkActionResponse,
+  AuditLogResponse,
+  AuditDashboardSummaryResponse,
   NotificationReadStatus,
   NotificationResponse,
   NotificationUnreadCountResponse,
+  ProfileLocationCountryResponse,
+  ProgramTrackLevelResponse,
+  ProgramTrackResponse,
+  RbacPermissionResponse,
+  RbacRoleResponse,
+  UpdateRbacRolePermissionsRequest,
   RegisterRequest,
   RegisterResponse,
   SessionResponse,
   UserImportResultResponse,
+  EntryDiplomaImportResultResponse,
+  AcademicLevelImportResultResponse,
+  ProgramTrackImportResultResponse,
+  UserOptionResponse,
   UserResponse,
   UserStatusStatsResponse,
 } from "@/lib/types";
@@ -26,7 +68,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8
 // State pour gérer le refresh token en cours (évite les race conditions)
 let refreshPromise: Promise<{ accessToken: string; refreshToken: string } | null> | null = null;
 
-type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
+type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
 type ApiErrorPayload = {
   errorCode?: string;
@@ -37,6 +79,24 @@ type ApiErrorPayload = {
   statusCode?: number;
   details?: unknown;
 };
+
+function normalizeApiPath(pathOrUrl: string): string {
+  const trimmed = pathOrUrl.trim();
+  if (!trimmed) {
+    return "/";
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const parsed = new URL(trimmed);
+      return `${parsed.pathname}${parsed.search}`;
+    } catch {
+      return "/";
+    }
+  }
+
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+}
 
 export class ApiError extends Error {
   readonly errorCode?: string;
@@ -56,6 +116,16 @@ export class ApiError extends Error {
     this.path = payload?.path;
     this.timestamp = payload?.timestamp;
   }
+}
+
+function buildNetworkApiError(path: string): ApiError {
+  return new ApiError(0, {
+    errorCode: "NETWORK_ERROR",
+    message: "Impossible de contacter le serveur. Verifiez la connexion et l'URL API.",
+    messageKey: "error.network_error",
+    path,
+    statusCode: 0,
+  });
 }
 
 type BrowserMetadata = {
@@ -173,12 +243,17 @@ async function apiRequestInternal<T>(
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method,
-    headers,
-    body: payload ? JSON.stringify(payload) : undefined,
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method,
+      headers,
+      body: payload ? JSON.stringify(payload) : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    throw buildNetworkApiError(path);
+  }
 
   if (!response.ok) {
     let errorBody: ApiErrorPayload | undefined;
@@ -245,12 +320,17 @@ async function apiRequestBlob(path: string, method: HttpMethod, token?: string, 
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method,
-    headers,
-    body,
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method,
+      headers,
+      body,
+      cache: "no-store",
+    });
+  } catch {
+    throw buildNetworkApiError(path);
+  }
 
   if (!response.ok) {
     let errorBody: ApiErrorPayload | undefined;
@@ -289,12 +369,17 @@ async function apiRequestMultipart<T>(path: string, method: "POST" | "PATCH", fo
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method,
-    headers,
-    body: formData,
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method,
+      headers,
+      body: formData,
+      cache: "no-store",
+    });
+  } catch {
+    throw buildNetworkApiError(path);
+  }
 
   if (!response.ok) {
     let errorBody: ApiErrorPayload | undefined;
@@ -404,8 +489,16 @@ export const api = {
       apiRequest<LoginResponse>("/api/v1/auth/login", "POST", payload),
     register: (payload: RegisterRequest) =>
       apiRequest<RegisterResponse>("/api/v1/auth/register", "POST", payload),
+    googleConfig: () =>
+      apiRequest<GoogleAuthConfigResponse>("/api/v1/auth/google/config", "GET"),
+    googleLogin: (payload: GoogleAuthRequest) =>
+      apiRequest<LoginResponse>("/api/v1/auth/google/login", "POST", payload),
+    googleRegister: (payload: GoogleAuthRequest) =>
+      apiRequest<LoginResponse>("/api/v1/auth/google/register", "POST", payload),
     refresh: (refreshToken: string) =>
       apiRequest<LoginResponse>("/api/v1/auth/refresh", "POST", { refreshToken }),
+    verifyMfa: (payload: MfaVerifyRequest) =>
+      apiRequest<LoginResponse>("/api/v1/auth/verify-mfa", "POST", payload),
     logout: (token: string) => apiRequest<void>("/api/v1/auth/logout", "POST", undefined, token),
     passwordResetRequest: (email: string) =>
       apiRequest<ApiSuccessResponse<PasswordResetRequestResult>>("/api/v1/auth/password-reset/request", "POST", { email })
@@ -503,6 +596,9 @@ export const api = {
     stats: (token: string) => apiRequest<UserStatusStatsResponse>("/api/v1/users/stats", "GET", undefined, token),
     get: (token: string, id: string) => apiRequest<UserResponse>(`/api/v1/users/${id}`, "GET", undefined, token),
     getMe: (token: string) => apiRequest<UserResponse>("/api/v1/users/me", "GET", undefined, token),
+    options: (token: string) => apiRequest<UserOptionResponse[]>("/api/v1/users/options", "GET", undefined, token),
+    getProfileLocationOptions: (token: string) =>
+      apiRequest<ProfileLocationCountryResponse[]>("/api/v1/users/profile-location-options", "GET", undefined, token),
     create: (token: string, payload: CreateUserRequest) =>
       apiRequest<ApiSuccessResponse<UserResponse>>("/api/v1/users", "POST", payload, token)
         .then((response) => {
@@ -513,12 +609,32 @@ export const api = {
         }),
     update: (token: string, id: string, payload: UpdateUserRequest) =>
       apiRequest<UserResponse>(`/api/v1/users/${id}`, "PATCH", payload, token),
+    assignParentAdmin: (token: string, id: string, payload: AssignParentAdminRequest) =>
+      apiRequest<UserResponse>(`/api/v1/users/${id}/parent-admin`, "PATCH", payload, token),
     updateMe: (token: string, payload: UpdateProfileRequest) =>
       apiRequest<UserResponse>("/api/v1/users/me", "PATCH", payload, token),
     uploadMyProfilePhoto: (token: string, file: File) => {
       const formData = new FormData();
       formData.append("file", file);
       return apiRequestMultipart<UserResponse>("/api/v1/users/me/profile-photo", "POST", formData, token);
+    },
+    getProfilePhotoBlob: async (token: string, pathOrUrl: string) => {
+      const normalizedPath = normalizeApiPath(pathOrUrl);
+
+      try {
+        const response = await apiRequestBlob(normalizedPath, "GET", token);
+        return response.blob;
+      } catch (error) {
+        const isForbidden = error instanceof ApiError && error.statusCode === 403;
+        const isUserPhotoPath = /^\/api\/v1\/users\/[0-9a-f-]{36}\/profile-photo$/i.test(normalizedPath);
+
+        if (isForbidden && isUserPhotoPath) {
+          const fallbackResponse = await apiRequestBlob("/api/v1/users/me/profile-photo", "GET", token);
+          return fallbackResponse.blob;
+        }
+
+        throw error;
+      }
     },
     deleteMyProfilePhoto: (token: string) =>
       apiRequest<UserResponse>("/api/v1/users/me/profile-photo", "DELETE", undefined, token),
@@ -573,6 +689,23 @@ export const api = {
         token,
       ).then((response) => response?.data),
   },
+  rbac: {
+    permissions: {
+      list: (token: string) =>
+        apiRequest<RbacPermissionResponse[]>("/api/v1/rbac/permissions", "GET", undefined, token),
+    },
+    roles: {
+      list: (token: string) =>
+        apiRequest<RbacRoleResponse[]>("/api/v1/rbac/roles", "GET", undefined, token),
+      updatePermissions: (token: string, roleId: string, permissionIds: string[]) =>
+        apiRequest<RbacRoleResponse>(
+          `/api/v1/rbac/roles/${roleId}/permissions`,
+          "PATCH",
+          { permissionIds } satisfies UpdateRbacRolePermissionsRequest,
+          token,
+        ),
+    },
+  },
   notifications: {
     list: (token: string, page = 0, size = 10, readStatus: NotificationReadStatus = "ALL") =>
       apiRequest<PagedResponse<NotificationResponse>>(
@@ -591,5 +724,320 @@ export const api = {
       apiRequest<void>(`/api/v1/notifications/${id}`, "DELETE", undefined, token),
     deleteBulk: (token: string, ids: string[]) =>
       apiRequest<NotificationBulkActionResponse>("/api/v1/notifications/bulk-delete", "POST", { ids }, token),
+  },
+  auditLogs: {
+    list: (
+      token: string,
+      params: {
+        page: number;
+        size: number;
+        search?: string;
+        action?: string;
+        status?: "ALL" | "OK" | "ERROR" | "INFO";
+      },
+    ) => {
+      const searchParams = new URLSearchParams();
+      searchParams.set("page", `${params.page}`);
+      searchParams.set("size", `${params.size}`);
+      if (params.search && params.search.trim().length > 0) {
+        searchParams.set("search", params.search.trim());
+      }
+      if (params.action && params.action !== "ALL") {
+        searchParams.set("action", params.action);
+      }
+      if (params.status && params.status !== "ALL") {
+        searchParams.set("status", params.status);
+      }
+
+      return apiRequest<PagedResponse<AuditLogResponse>>(`/api/v1/audit-logs?${searchParams.toString()}`, "GET", undefined, token);
+    },
+    listMine: (
+      token: string,
+      params: {
+        page: number;
+        size: number;
+        search?: string;
+        action?: string;
+        status?: "ALL" | "OK" | "ERROR" | "INFO";
+      },
+    ) => {
+      const searchParams = new URLSearchParams();
+      searchParams.set("page", `${params.page}`);
+      searchParams.set("size", `${params.size}`);
+      if (params.search && params.search.trim().length > 0) {
+        searchParams.set("search", params.search.trim());
+      }
+      if (params.action && params.action !== "ALL") {
+        searchParams.set("action", params.action);
+      }
+      if (params.status && params.status !== "ALL") {
+        searchParams.set("status", params.status);
+      }
+      return apiRequest<PagedResponse<AuditLogResponse>>(`/api/v1/audit-logs/me?${searchParams.toString()}`, "GET", undefined, token);
+    },
+    summary: (token: string) => apiRequest<AuditDashboardSummaryResponse>("/api/v1/audit-logs/summary", "GET", undefined, token),
+  },
+  configuration: {
+    establishments: {
+      create: (token: string, payload: CreateEstablishmentRequest) =>
+        apiRequest<EstablishmentResponse>("/api/v1/establishments", "POST", payload, token),
+      list: (token: string) =>
+        apiRequest<EstablishmentResponse[]>("/api/v1/establishments", "GET", undefined, token),
+      get: (token: string, id: string) =>
+        apiRequest<EstablishmentResponse>(`/api/v1/establishments/${id}`, "GET", undefined, token),
+      update: (token: string, id: string, payload: UpdateEstablishmentRequest) =>
+        apiRequest<EstablishmentResponse>(`/api/v1/establishments/${id}`, "PATCH", payload, token),
+      uploadLogo: (token: string, id: string, file: File) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        return apiRequestMultipart<EstablishmentResponse>(`/api/v1/establishments/${id}/logo`, "POST", formData, token);
+      },
+      getLogoBlob: (token: string, id: string) =>
+        apiRequestBlob(`/api/v1/establishments/${id}/logo`, "GET", token).then((response) => response.blob),
+      deleteLogo: (token: string, id: string) =>
+        apiRequest<EstablishmentResponse>(`/api/v1/establishments/${id}/logo`, "DELETE", undefined, token),
+      delete: (token: string, id: string) =>
+        apiRequest<EstablishmentResponse>(`/api/v1/establishments/${id}`, "DELETE", undefined, token),
+      activate: (token: string, id: string) =>
+        apiRequest<EstablishmentResponse>(`/api/v1/establishments/${id}/activate`, "POST", undefined, token),
+      deactivate: (token: string, id: string) =>
+        apiRequest<EstablishmentResponse>(`/api/v1/establishments/${id}/deactivate`, "POST", undefined, token),
+    },
+    entryDiplomas: {
+      create: (token: string, payload: CreateEntryDiplomaRequest) =>
+        apiRequest<EntryDiplomaResponse>("/api/v1/entry-diplomas", "POST", payload, token),
+      list: (token: string, establishmentId: string) =>
+        apiRequest<EntryDiplomaResponse[]>(`/api/v1/entry-diplomas?establishmentId=${establishmentId}`, "GET", undefined, token),
+      get: (token: string, id: string, establishmentId: string) =>
+        apiRequest<EntryDiplomaResponse>(`/api/v1/entry-diplomas/${id}?establishmentId=${establishmentId}`, "GET", undefined, token),
+      update: (token: string, id: string, establishmentId: string, payload: UpdateEntryDiplomaRequest) =>
+        apiRequest<EntryDiplomaResponse>(`/api/v1/entry-diplomas/${id}?establishmentId=${establishmentId}`, "PATCH", payload, token),
+      delete: (token: string, id: string, establishmentId: string) =>
+        apiRequest<void>(`/api/v1/entry-diplomas/${id}?establishmentId=${establishmentId}`, "DELETE", undefined, token),
+      activate: (token: string, id: string, establishmentId: string) =>
+        apiRequest<EntryDiplomaResponse>(`/api/v1/entry-diplomas/${id}/activate?establishmentId=${establishmentId}`, "POST", undefined, token),
+      deactivate: (token: string, id: string, establishmentId: string) =>
+        apiRequest<EntryDiplomaResponse>(`/api/v1/entry-diplomas/${id}/deactivate?establishmentId=${establishmentId}`, "POST", undefined, token),
+      hardDelete: (token: string, id: string, establishmentId: string) =>
+        apiRequest<void>(`/api/v1/entry-diplomas/${id}/hard-delete?establishmentId=${establishmentId}`, "DELETE", undefined, token),
+      exportExcel: (token: string, establishmentId: string) =>
+        apiRequestBlob(`/api/v1/entry-diplomas/export?establishmentId=${establishmentId}`, "GET", token),
+      importTemplate: (token: string) =>
+        apiRequestBlob("/api/v1/entry-diplomas/import-template", "GET", token),
+      importExcel: async (token: string, establishmentId: string, file: File) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        const response = await fetch(`${API_BASE_URL}/api/v1/entry-diplomas/import?establishmentId=${establishmentId}`, {
+          method: "POST",
+          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: formData,
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          let errorBody: ApiErrorPayload | undefined;
+          try { errorBody = (await response.json()) as ApiErrorPayload; } catch { /* ignore */ }
+          throw new ApiError(response.status, errorBody);
+        }
+        return (await response.json()) as EntryDiplomaImportResultResponse;
+      },
+    },
+    academicLevels: {
+      create: (token: string, payload: CreateAcademicLevelRequest) =>
+        apiRequest<AcademicLevelResponse>("/api/v1/academic-levels", "POST", payload, token),
+      list: (token: string, establishmentId: string) =>
+        apiRequest<AcademicLevelResponse[]>(`/api/v1/academic-levels?establishmentId=${establishmentId}`, "GET", undefined, token),
+      get: (token: string, id: string, establishmentId: string) =>
+        apiRequest<AcademicLevelResponse>(`/api/v1/academic-levels/${id}?establishmentId=${establishmentId}`, "GET", undefined, token),
+      update: (token: string, id: string, establishmentId: string, payload: UpdateAcademicLevelRequest) =>
+        apiRequest<AcademicLevelResponse>(`/api/v1/academic-levels/${id}?establishmentId=${establishmentId}`, "PATCH", payload, token),
+      delete: (token: string, id: string, establishmentId: string) =>
+        apiRequest<void>(`/api/v1/academic-levels/${id}?establishmentId=${establishmentId}`, "DELETE", undefined, token),
+      activate: (token: string, id: string, establishmentId: string) =>
+        apiRequest<AcademicLevelResponse>(`/api/v1/academic-levels/${id}/activate?establishmentId=${establishmentId}`, "POST", undefined, token),
+      deactivate: (token: string, id: string, establishmentId: string) =>
+        apiRequest<AcademicLevelResponse>(`/api/v1/academic-levels/${id}/deactivate?establishmentId=${establishmentId}`, "POST", undefined, token),
+      hardDelete: (token: string, id: string, establishmentId: string) =>
+        apiRequest<void>(`/api/v1/academic-levels/${id}/hard-delete?establishmentId=${establishmentId}`, "DELETE", undefined, token),
+      exportExcel: (token: string, establishmentId: string) =>
+        apiRequestBlob(`/api/v1/academic-levels/export?establishmentId=${establishmentId}`, "GET", token),
+      importTemplate: (token: string) =>
+        apiRequestBlob("/api/v1/academic-levels/import-template", "GET", token),
+      importExcel: async (token: string, establishmentId: string, file: File) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        const response = await fetch(`${API_BASE_URL}/api/v1/academic-levels/import?establishmentId=${establishmentId}`, {
+          method: "POST",
+          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: formData,
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          let errorBody: ApiErrorPayload | undefined;
+          try { errorBody = (await response.json()) as ApiErrorPayload; } catch { /* ignore */ }
+          throw new ApiError(response.status, errorBody);
+        }
+        return (await response.json()) as AcademicLevelImportResultResponse;
+      },
+      listEntryDiplomas: (token: string, id: string, establishmentId: string) =>
+        apiRequest<EntryDiplomaResponse[]>(`/api/v1/academic-levels/${id}/entry-diplomas?establishmentId=${establishmentId}`, "GET", undefined, token),
+      attachEntryDiploma: (token: string, id: string, entryDiplomaId: string, establishmentId: string) =>
+        apiRequest<void>(`/api/v1/academic-levels/${id}/entry-diplomas/${entryDiplomaId}?establishmentId=${establishmentId}`, "POST", undefined, token),
+      detachEntryDiploma: (token: string, id: string, entryDiplomaId: string, establishmentId: string) =>
+        apiRequest<void>(`/api/v1/academic-levels/${id}/entry-diplomas/${entryDiplomaId}?establishmentId=${establishmentId}`, "DELETE", undefined, token),
+    },
+    programTracks: {
+      create: (token: string, payload: CreateProgramTrackRequest) =>
+        apiRequest<ProgramTrackResponse>("/api/v1/program-tracks", "POST", payload, token),
+      list: (token: string, establishmentId: string) =>
+        apiRequest<ProgramTrackResponse[]>(`/api/v1/program-tracks?establishmentId=${establishmentId}`, "GET", undefined, token),
+      get: (token: string, id: string, establishmentId: string) =>
+        apiRequest<ProgramTrackResponse>(`/api/v1/program-tracks/${id}?establishmentId=${establishmentId}`, "GET", undefined, token),
+      update: (token: string, id: string, establishmentId: string, payload: UpdateProgramTrackRequest) =>
+        apiRequest<ProgramTrackResponse>(`/api/v1/program-tracks/${id}?establishmentId=${establishmentId}`, "PATCH", payload, token),
+      delete: (token: string, id: string, establishmentId: string) =>
+        apiRequest<void>(`/api/v1/program-tracks/${id}?establishmentId=${establishmentId}`, "DELETE", undefined, token),
+      activate: (token: string, id: string, establishmentId: string) =>
+        apiRequest<ProgramTrackResponse>(`/api/v1/program-tracks/${id}/activate?establishmentId=${establishmentId}`, "POST", undefined, token),
+      deactivate: (token: string, id: string, establishmentId: string) =>
+        apiRequest<ProgramTrackResponse>(`/api/v1/program-tracks/${id}/deactivate?establishmentId=${establishmentId}`, "POST", undefined, token),
+      hardDelete: (token: string, id: string, establishmentId: string) =>
+        apiRequest<void>(`/api/v1/program-tracks/${id}/hard?establishmentId=${establishmentId}`, "DELETE", undefined, token),
+      exportExcel: (token: string, establishmentId: string) =>
+        apiRequestBlob(`/api/v1/program-tracks/export?establishmentId=${establishmentId}`, "GET", token),
+      importTemplate: (token: string) =>
+        apiRequestBlob("/api/v1/program-tracks/import-template", "GET", token),
+      importExcel: async (token: string, establishmentId: string, file: File) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        const response = await fetch(`${API_BASE_URL}/api/v1/program-tracks/import?establishmentId=${establishmentId}`, {
+          method: "POST",
+          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: formData,
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          let errorBody: ApiErrorPayload | undefined;
+          try { errorBody = (await response.json()) as ApiErrorPayload; } catch { /* ignore */ }
+          throw new ApiError(response.status, errorBody);
+        }
+        return (await response.json()) as ProgramTrackImportResultResponse;
+      },
+    },
+    programTrackLevels: {
+      create: (token: string, payload: CreateProgramTrackLevelRequest) =>
+        apiRequest<ProgramTrackLevelResponse>("/api/v1/program-track-levels", "POST", payload, token),
+      list: (token: string, establishmentId: string) =>
+        apiRequest<ProgramTrackLevelResponse[]>(`/api/v1/program-track-levels?establishmentId=${establishmentId}`, "GET", undefined, token),
+      get: (token: string, id: string, establishmentId: string) =>
+        apiRequest<ProgramTrackLevelResponse>(`/api/v1/program-track-levels/${id}?establishmentId=${establishmentId}`, "GET", undefined, token),
+      update: (token: string, id: string, establishmentId: string, payload: UpdateProgramTrackLevelRequest) =>
+        apiRequest<ProgramTrackLevelResponse>(`/api/v1/program-track-levels/${id}?establishmentId=${establishmentId}`, "PATCH", payload, token),
+      delete: (token: string, id: string, establishmentId: string) =>
+        apiRequest<void>(`/api/v1/program-track-levels/${id}?establishmentId=${establishmentId}`, "DELETE", undefined, token),
+      activate: (token: string, id: string, establishmentId: string) =>
+        apiRequest<ProgramTrackLevelResponse>(`/api/v1/program-track-levels/${id}/activate?establishmentId=${establishmentId}`, "POST", undefined, token),
+      deactivate: (token: string, id: string, establishmentId: string) =>
+        apiRequest<ProgramTrackLevelResponse>(`/api/v1/program-track-levels/${id}/deactivate?establishmentId=${establishmentId}`, "POST", undefined, token),
+    },
+    acquisitionChannels: {
+      create: (token: string, payload: CreateAcquisitionChannelRequest) =>
+        apiRequest<AcquisitionChannelResponse>("/api/v1/acquisition-channels", "POST", payload, token),
+      list: (token: string, establishmentId: string) =>
+        apiRequest<AcquisitionChannelResponse[]>(`/api/v1/acquisition-channels?establishmentId=${establishmentId}`, "GET", undefined, token),
+      get: (token: string, id: string, establishmentId: string) =>
+        apiRequest<AcquisitionChannelResponse>(`/api/v1/acquisition-channels/${id}?establishmentId=${establishmentId}`, "GET", undefined, token),
+      update: (token: string, id: string, establishmentId: string, payload: UpdateAcquisitionChannelRequest) =>
+        apiRequest<AcquisitionChannelResponse>(`/api/v1/acquisition-channels/${id}?establishmentId=${establishmentId}`, "PATCH", payload, token),
+      delete: (token: string, id: string, establishmentId: string) =>
+        apiRequest<void>(`/api/v1/acquisition-channels/${id}?establishmentId=${establishmentId}`, "DELETE", undefined, token),
+      activate: (token: string, id: string, establishmentId: string) =>
+        apiRequest<AcquisitionChannelResponse>(`/api/v1/acquisition-channels/${id}/activate?establishmentId=${establishmentId}`, "POST", undefined, token),
+      deactivate: (token: string, id: string, establishmentId: string) =>
+        apiRequest<AcquisitionChannelResponse>(`/api/v1/acquisition-channels/${id}/deactivate?establishmentId=${establishmentId}`, "POST", undefined, token),
+      hardDelete: (token: string, id: string, establishmentId: string) =>
+        apiRequest<void>(`/api/v1/acquisition-channels/${id}/hard?establishmentId=${establishmentId}`, "DELETE", undefined, token),
+      exportExcel: (token: string, establishmentId: string) =>
+        apiRequestBlob(`/api/v1/acquisition-channels/export?establishmentId=${establishmentId}`, "GET", token),
+      importTemplate: (token: string) =>
+        apiRequestBlob("/api/v1/acquisition-channels/import-template", "GET", token),
+      importExcel: async (token: string, establishmentId: string, file: File) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        const response = await fetch(`${API_BASE_URL}/api/v1/acquisition-channels/import?establishmentId=${establishmentId}`, {
+          method: "POST",
+          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: formData,
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          let errorBody: ApiErrorPayload | undefined;
+          try { errorBody = (await response.json()) as ApiErrorPayload; } catch { /* ignore */ }
+          throw new ApiError(response.status, errorBody);
+        }
+        return (await response.json()) as AcquisitionChannelImportResultResponse;
+      },
+    },
+    funnelStages: {
+      create: (token: string, payload: CreateFunnelStageRequest) =>
+        apiRequest<FunnelStageResponse>("/api/v1/funnel-stages", "POST", payload, token),
+      list: (token: string, establishmentId: string) =>
+        apiRequest<FunnelStageResponse[]>(`/api/v1/funnel-stages?establishmentId=${establishmentId}`, "GET", undefined, token),
+      get: (token: string, id: string, establishmentId: string) =>
+        apiRequest<FunnelStageResponse>(`/api/v1/funnel-stages/${id}?establishmentId=${establishmentId}`, "GET", undefined, token),
+      update: (token: string, id: string, establishmentId: string, payload: UpdateFunnelStageRequest) =>
+        apiRequest<FunnelStageResponse>(`/api/v1/funnel-stages/${id}?establishmentId=${establishmentId}`, "PATCH", payload, token),
+      delete: (token: string, id: string, establishmentId: string) =>
+        apiRequest<void>(`/api/v1/funnel-stages/${id}?establishmentId=${establishmentId}`, "DELETE", undefined, token),
+      activate: (token: string, id: string, establishmentId: string) =>
+        apiRequest<FunnelStageResponse>(`/api/v1/funnel-stages/${id}/activate?establishmentId=${establishmentId}`, "POST", undefined, token),
+      deactivate: (token: string, id: string, establishmentId: string) =>
+        apiRequest<FunnelStageResponse>(`/api/v1/funnel-stages/${id}/deactivate?establishmentId=${establishmentId}`, "POST", undefined, token),
+      hardDelete: (token: string, id: string, establishmentId: string) =>
+        apiRequest<void>(`/api/v1/funnel-stages/${id}/hard?establishmentId=${establishmentId}`, "DELETE", undefined, token),
+      exportExcel: (token: string, establishmentId: string) =>
+        apiRequestBlob(`/api/v1/funnel-stages/export?establishmentId=${establishmentId}`, "GET", token),
+      importTemplate: (token: string) =>
+        apiRequestBlob("/api/v1/funnel-stages/import-template", "GET", token),
+      importExcel: async (token: string, establishmentId: string, file: File) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        const response = await fetch(`${API_BASE_URL}/api/v1/funnel-stages/import?establishmentId=${establishmentId}`, {
+          method: "POST",
+          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: formData,
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          let errorBody: ApiErrorPayload | undefined;
+          try { errorBody = (await response.json()) as ApiErrorPayload; } catch { /* ignore */ }
+          throw new ApiError(response.status, errorBody);
+        }
+        return (await response.json()) as FunnelStageImportResultResponse;
+      },
+    },
+    funnelStageTransitions: {
+      create: (token: string, payload: CreateFunnelStageTransitionRequest) =>
+        apiRequest<FunnelStageTransitionResponse>("/api/v1/funnel-stage-transitions", "POST", payload, token),
+      list: (token: string, establishmentId: string) =>
+        apiRequest<FunnelStageTransitionResponse[]>(`/api/v1/funnel-stage-transitions?establishmentId=${establishmentId}`, "GET", undefined, token),
+      get: (token: string, id: string, establishmentId: string) =>
+        apiRequest<FunnelStageTransitionResponse>(`/api/v1/funnel-stage-transitions/${id}?establishmentId=${establishmentId}`, "GET", undefined, token),
+      update: (token: string, id: string, establishmentId: string, payload: UpdateFunnelStageTransitionRequest) =>
+        apiRequest<FunnelStageTransitionResponse>(`/api/v1/funnel-stage-transitions/${id}?establishmentId=${establishmentId}`, "PATCH", payload, token),
+      delete: (token: string, id: string, establishmentId: string) =>
+        apiRequest<void>(`/api/v1/funnel-stage-transitions/${id}?establishmentId=${establishmentId}`, "DELETE", undefined, token),
+      hardDelete: (token: string, id: string, establishmentId: string) =>
+        apiRequest<void>(`/api/v1/funnel-stage-transitions/${id}/hard?establishmentId=${establishmentId}`, "DELETE", undefined, token),
+      activate: (token: string, id: string, establishmentId: string) =>
+        apiRequest<FunnelStageTransitionResponse>(`/api/v1/funnel-stage-transitions/${id}/activate?establishmentId=${establishmentId}`, "POST", undefined, token),
+      deactivate: (token: string, id: string, establishmentId: string) =>
+        apiRequest<FunnelStageTransitionResponse>(`/api/v1/funnel-stage-transitions/${id}/deactivate?establishmentId=${establishmentId}`, "POST", undefined, token),
+    },
+    pipelineViewPreference: {
+      get: (token: string, establishmentId: string) =>
+        apiRequest<PipelineViewPreferenceResponse>(`/api/v1/pipeline-view-preference?establishmentId=${establishmentId}`, "GET", undefined, token),
+      update: (token: string, payload: UpdatePipelineViewPreferenceRequest) =>
+        apiRequest<PipelineViewPreferenceResponse>("/api/v1/pipeline-view-preference", "PUT", payload, token),
+    },
   },
 };

@@ -1,6 +1,9 @@
 "use client";
 
 import { useMemo, useRef, useState, type ComponentType } from "react";
+import { useRouter } from "next/navigation";
+import Image from "next/image";
+import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   Users,
@@ -14,11 +17,22 @@ import {
   Lock,
   KeyRound,
   Clock3,
+  Building2,
+  GraduationCap,
+  Award,
+  BookOpen,
+  Layers,
+  Megaphone,
+  GitBranch,
+  Filter,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { dictionaries } from "@/lib/i18n";
+import { api } from "@/lib/api";
+import { buildPermissionSet, canAccessTab, type TabKey } from "@/lib/permissions";
+import { tabToPath } from "@/lib/dashboard-routes";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { useDashboardStore } from "@/store/dashboard-store";
 
@@ -70,8 +84,24 @@ const menusByLocale = {
       icon: Settings,
       subItems: [
         { id: "profile", label: "Profile", tab: "settings-profile", icon: UserRound },
+        { id: "settings-configuration", label: "Configuration metier", tab: "settings-configuration", icon: Settings },
         { id: "notifications", label: "Notifications", tab: "settings-notifications", icon: Bell },
         { id: "audit-log", label: "Journal d'audit", tab: "settings-audit", icon: FileText },
+      ],
+    },
+    {
+      id: "config-establishment",
+      label: "Configuration",
+      icon: Building2,
+      subItems: [
+        { id: "config-establishments", label: "Etablissements", tab: "config-establishments", icon: Building2 },
+        { id: "config-entry-diplomas", label: "Diplomes d'entree", tab: "config-entry-diplomas", icon: Award },
+        { id: "config-academic-levels", label: "Niveaux academiques", tab: "config-academic-levels", icon: GraduationCap },
+        { id: "config-program-tracks", label: "Filieres", tab: "config-program-tracks", icon: BookOpen },
+        { id: "config-program-track-levels", label: "Niveaux filiere", tab: "config-program-track-levels", icon: Layers },
+        { id: "config-acquisition-channels", label: "Canaux d'acquisition", tab: "config-acquisition-channels", icon: Megaphone },
+        { id: "config-funnel-stages", label: "Etapes du funnel", tab: "config-funnel-stages", icon: Filter },
+        { id: "config-funnel-stage-transitions", label: "Transitions du funnel", tab: "config-funnel-stage-transitions", icon: GitBranch },
       ],
     },
   ] satisfies SidebarItem[],
@@ -114,21 +144,65 @@ const menusByLocale = {
       icon: Settings,
       subItems: [
         { id: "profile", label: "Profile", tab: "settings-profile", icon: UserRound },
-        { id: "notifications", label: "Notifications", tab: "settings-notifications", icon: Bell },
-        { id: "audit-log", label: "Audit log", tab: "settings-audit", icon: FileText },
-      ],
-    },
-  ] satisfies SidebarItem[],
+          { id: "settings-configuration", label: "Business configuration", tab: "settings-configuration", icon: Settings },
+          { id: "notifications", label: "Notifications", tab: "settings-notifications", icon: Bell },
+          { id: "audit-log", label: "Audit log", tab: "settings-audit", icon: FileText },
+        ],
+      },
+      {
+        id: "config-establishment",
+        label: "Configuration",
+        icon: Building2,
+        subItems: [
+          { id: "config-establishments", label: "Establishments", tab: "config-establishments", icon: Building2 },
+          { id: "config-entry-diplomas", label: "Entry diplomas", tab: "config-entry-diplomas", icon: Award },
+          { id: "config-academic-levels", label: "Academic levels", tab: "config-academic-levels", icon: GraduationCap },
+          { id: "config-program-tracks", label: "Program tracks", tab: "config-program-tracks", icon: BookOpen },
+          { id: "config-program-track-levels", label: "Track levels", tab: "config-program-track-levels", icon: Layers },
+          { id: "config-acquisition-channels", label: "Acquisition channels", tab: "config-acquisition-channels", icon: Megaphone },
+          { id: "config-funnel-stages", label: "Funnel stages", tab: "config-funnel-stages", icon: Filter },
+          { id: "config-funnel-stage-transitions", label: "Funnel transitions", tab: "config-funnel-stage-transitions", icon: GitBranch },
+        ],
+      },
+    ] satisfies SidebarItem[],
 } as const;
 
 export function AppSidebar() {
-  const { locale, activeTab, setActiveTab, clearTokens } = useDashboardStore();
+  const router = useRouter();
+  const { locale, theme, activeTab, clearTokens, accessToken } = useDashboardStore();
   const [hovered, setHovered] = useState<string | null>(null);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const items = menusByLocale[locale];
   const t = dictionaries[locale];
+
+  const currentUserQuery = useQuery({
+    queryKey: ["settings-profile", "sidebar"],
+    enabled: Boolean(accessToken),
+    queryFn: () => api.users.getMe(accessToken),
+  });
+
+  const permissionSet = useMemo(() => buildPermissionSet(currentUserQuery.data ?? null), [currentUserQuery.data]);
+
+  const filteredItems = useMemo(
+    () =>
+      items
+        .map((item) => {
+          const nextSubItems = item.subItems.filter((subItem) => canAccessTab(permissionSet, subItem.tab as TabKey));
+          const canOpenRootTab = item.tab ? canAccessTab(permissionSet, item.tab as TabKey) : false;
+          if (!canOpenRootTab && nextSubItems.length === 0) {
+            return null;
+          }
+
+          return {
+            ...item,
+            subItems: nextSubItems,
+          };
+        })
+        .filter(Boolean) as SidebarItem[],
+    [items, permissionSet],
+  );
 
   const openMenu = (id: string) => {
     if (closeTimeoutRef.current) {
@@ -149,18 +223,25 @@ export function AppSidebar() {
 
   const activeGroup = useMemo(
     () =>
-      items.find(
+      filteredItems.find(
         (item) => item.tab === activeTab || item.subItems.some((subItem) => subItem.tab === activeTab),
       ),
-    [activeTab, items],
+    [activeTab, filteredItems],
   );
 
   return (
     <aside className="fixed left-0 top-0 z-40 hidden h-screen w-18.5 border-r border-border/60 bg-sidebar/90 md:flex md:flex-col md:items-center md:gap-4 md:py-4">
-      <div className="h-8 w-8 rounded-sm bg-primary/30" />
+      <Image
+        src={theme === "dark" ? "/img/min-logo-dark.png" : "/img/min-logo-light.png"}
+        alt="AERIXA"
+        width={36}
+        height={36}
+        className="h-9 w-9 object-contain"
+        priority
+      />
 
       <nav className="relative mt-3 flex w-full flex-1 flex-col items-center gap-2 overflow-visible">
-        {items.map((item) => {
+        {filteredItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeGroup?.id === item.id;
           const hasSubItems = item.subItems.length > 0;
@@ -178,7 +259,7 @@ export function AppSidebar() {
                   type="button"
                   onClick={() => {
                     if (!hasSubItems && item.tab) {
-                      setActiveTab(item.tab);
+                      router.push(tabToPath(item.tab as TabKey));
                     }
                   }}
                   className={`flex h-10 w-10 items-center justify-center rounded-full border text-muted-foreground transition hover:text-foreground ${
@@ -206,7 +287,7 @@ export function AppSidebar() {
                         <button
                           key={subItem.id}
                           type="button"
-                          onClick={() => setActiveTab(subItem.tab)}
+                          onClick={() => router.push(tabToPath(subItem.tab as TabKey))}
                           className={`flex items-center justify-between rounded-lg px-2 py-2 text-sm transition ${
                             activeTab === subItem.tab
                               ? "bg-primary/15 text-foreground"

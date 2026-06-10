@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Download, Eye, FileSpreadsheet, Filter, RefreshCcw, ShieldX } from "lucide-react";
+import { Eye, Filter, RefreshCcw, ShieldX } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Locale } from "@/lib/i18n";
 import type { SessionResponse } from "@/lib/types";
@@ -15,6 +15,8 @@ import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/toast-provider";
+import { hasPermission } from "@/lib/permissions";
+import { SessionsCriticalActions } from "@/components/dashboard/sessions-critical-actions";
 
 const PAGE_SIZE = 10;
 
@@ -22,6 +24,7 @@ type SessionsManagementPanelProps = {
   accessToken: string;
   locale: Locale;
   onLog: (entry: string) => void;
+  permissionSet?: Set<string>;
 };
 
 type SessionStatusFilter = "ALL" | "ACTIVE" | "REVOKED" | "EXPIRED";
@@ -282,9 +285,15 @@ function deriveTerminalLabel(session: SessionResponse, locale: Locale) {
   return locale === "fr" ? labels.fr.unknownTerminal : labels.en.unknownTerminal;
 }
 
-export function SessionsManagementPanel({ accessToken, locale, onLog }: SessionsManagementPanelProps) {
+export function SessionsManagementPanel({ accessToken, locale, onLog, permissionSet }: SessionsManagementPanelProps) {
   const { toast } = useToast();
   const t = labels[locale];
+  const permissions = permissionSet ?? new Set<string>();
+  const canReadSessions =
+    hasPermission(permissions, "sessions:read_all") ||
+    hasPermission(permissions, "sessions:read_children");
+  const canRevokeSessions = hasPermission(permissions, "sessions:revoke");
+  const canExportSessions = canReadSessions;
 
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
@@ -302,8 +311,8 @@ export function SessionsManagementPanel({ accessToken, locale, onLog }: Sessions
 
   const usersQuery = useQuery({
     queryKey: ["sessions", "users-options", accessToken],
-    queryFn: () => api.users.list(accessToken, 0, 200, "ALL"),
-    enabled: Boolean(accessToken),
+    queryFn: () => api.users.options(accessToken),
+    enabled: Boolean(accessToken && canReadSessions),
   });
 
   const sessionsQuery = useQuery({
@@ -318,7 +327,7 @@ export function SessionsManagementPanel({ accessToken, locale, onLog }: Sessions
         startedFrom: startedFrom || undefined,
         startedTo: startedTo || undefined,
       }),
-    enabled: Boolean(accessToken),
+    enabled: Boolean(accessToken && canReadSessions),
   });
 
   const detailsQuery = useQuery({
@@ -378,13 +387,13 @@ export function SessionsManagementPanel({ accessToken, locale, onLog }: Sessions
 
   const userOptions = useMemo(
     () =>
-      (usersQuery.data?.content ?? []).map((user) => ({
+      (usersQuery.data ?? []).map((user) => ({
         value: user.id,
-        label: `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email,
-        keywords: [user.email, user.username ?? "", user.firstName ?? "", user.lastName ?? ""],
+        label: user.displayName,
+        keywords: [user.displayName, user.email ?? ""],
         email: user.email,
       })),
-    [usersQuery.data?.content],
+    [usersQuery.data],
   );
 
   const userSelectOptions = useMemo(() => [
@@ -463,29 +472,14 @@ export function SessionsManagementPanel({ accessToken, locale, onLog }: Sessions
               </Button>
             </AppTooltip>
 
-            <AppTooltip content={t.exportXlsx}>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-9 w-9 rounded-xl text-muted-foreground hover:bg-background/80 hover:text-foreground"
-                onClick={() => exportMutation.mutate("xlsx")}
-                disabled={exportMutation.isPending}
-              >
-                <FileSpreadsheet className="h-4 w-4" />
-              </Button>
-            </AppTooltip>
-
-            <AppTooltip content={t.exportCsv}>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-9 w-9 rounded-xl text-muted-foreground hover:bg-background/80 hover:text-foreground"
-                onClick={() => exportMutation.mutate("csv")}
-                disabled={exportMutation.isPending}
-              >
-                <Download className="h-4 w-4" />
-              </Button>
-            </AppTooltip>
+            <SessionsCriticalActions
+              canExportSessions={canExportSessions}
+              exportPending={exportMutation.isPending}
+              exportXlsxLabel={t.exportXlsx}
+              exportCsvLabel={t.exportCsv}
+              onExportXlsx={() => exportMutation.mutate("xlsx")}
+              onExportCsv={() => exportMutation.mutate("csv")}
+            />
           </div>
         </div>
 
@@ -665,7 +659,7 @@ export function SessionsManagementPanel({ accessToken, locale, onLog }: Sessions
                               icon: ShieldX,
                               variant: "destructive",
                               onClick: () => revokeSessionMutation.mutate(session.id),
-                              disabled: revokeSessionMutation.isPending || status !== "ACTIVE",
+                              disabled: !canRevokeSessions || revokeSessionMutation.isPending || status !== "ACTIVE",
                             },
                           ]}
                         />
@@ -783,7 +777,7 @@ export function SessionsManagementPanel({ accessToken, locale, onLog }: Sessions
               <Button
                 variant="destructive"
                 onClick={() => revokeSessionMutation.mutate(currentDetail.id)}
-                disabled={revokeSessionMutation.isPending || currentDetail.status !== "ACTIVE"}
+                disabled={!canRevokeSessions || revokeSessionMutation.isPending || currentDetail.status !== "ACTIVE"}
               >
                 {t.actionRevoke}
               </Button>
