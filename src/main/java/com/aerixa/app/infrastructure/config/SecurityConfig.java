@@ -1,6 +1,7 @@
 package com.aerixa.app.infrastructure.config;
 
 import com.aerixa.app.infrastructure.security.JwtAuthenticationFilter;
+import com.aerixa.app.infrastructure.audit.AuditLoggingFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -26,6 +27,7 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final AuditLoggingFilter auditLoggingFilter;
 
     @Value("${cors.allowed-origins}")
     private String corsAllowedOrigins;
@@ -37,7 +39,9 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                    .requestMatchers("/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/refresh", "/api/v1/auth/health")
+                    .requestMatchers("/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/refresh", "/api/v1/auth/verify-mfa", "/api/v1/auth/health")
+                        .permitAll()
+                        .requestMatchers("/api/v1/auth/google/**")
                         .permitAll()
                         .requestMatchers("/api/v1/auth/password-reset/**", "/api/v1/auth/email-verification/**")
                         .permitAll()
@@ -45,7 +49,8 @@ public class SecurityConfig {
                         .permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated())
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                    .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                    .addFilterAfter(auditLoggingFilter, JwtAuthenticationFilter.class);
 
         return http.build();
     }

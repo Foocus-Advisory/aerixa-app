@@ -36,6 +36,7 @@ public class SessionService {
     private static final LocalDateTime ADMIN_SESSIONS_MAX_DATE = LocalDateTime.of(9999, 12, 31, 23, 59, 59);
     private static final String PERMISSION_SESSIONS_READ_ALL = "sessions:read_all";
     private static final String PERMISSION_SESSIONS_READ_CHILDREN = "sessions:read_children";
+    private static final String PERMISSION_SESSIONS_READ_SCOPED = "sessions:read_all|sessions:read_children";
 
     private final SessionRepository sessionRepository;
     private final UserRepository userRepository;
@@ -68,7 +69,7 @@ public class SessionService {
         boolean canReadChildren = hasPermission(actor, PERMISSION_SESSIONS_READ_CHILDREN);
 
         if (!canReadAll && !canReadChildren) {
-            throw new PermissionDeniedException("sessions:read");
+            throw new PermissionDeniedException(PERMISSION_SESSIONS_READ_SCOPED);
         }
 
         UUID currentSessionId = resolveCurrentSessionId(currentAccessToken);
@@ -109,7 +110,7 @@ public class SessionService {
         boolean canReadChildren = hasPermission(actor, PERMISSION_SESSIONS_READ_CHILDREN);
 
         if (!canReadAll && !canReadChildren) {
-            throw new PermissionDeniedException("sessions:read");
+            throw new PermissionDeniedException(PERMISSION_SESSIONS_READ_SCOPED);
         }
 
         UUID currentSessionId = resolveCurrentSessionId(currentAccessToken);
@@ -121,7 +122,7 @@ public class SessionService {
                     ? session.getUser().getParentAdmin().getId()
                     : null;
             if (!actor.getId().equals(parentAdminId)) {
-                throw new PermissionDeniedException("sessions:read");
+                throw new PermissionDeniedException(PERMISSION_SESSIONS_READ_SCOPED);
             }
         }
 
@@ -145,7 +146,7 @@ public class SessionService {
             boolean canReadChildren = hasPermission(actor, PERMISSION_SESSIONS_READ_CHILDREN);
 
             if (!canReadAll && !canReadChildren) {
-                throw new PermissionDeniedException("sessions:read");
+                throw new PermissionDeniedException(PERMISSION_SESSIONS_READ_SCOPED);
             }
 
             UUID currentSessionId = resolveCurrentSessionId(currentAccessToken);
@@ -240,6 +241,19 @@ public class SessionService {
     public Session findActiveByRefreshToken(String refreshToken) {
         String hash = TokenHashUtils.sha256(refreshToken);
         Session session = sessionRepository.findByRefreshTokenHash(hash)
+                .orElseThrow(SessionExpiredException::new);
+
+        if (!session.isActive()) {
+            throw new SessionExpiredException();
+        }
+
+        return session;
+    }
+
+    @Transactional(readOnly = true)
+    public Session findActiveByRefreshTokenForUpdate(String refreshToken) {
+        String hash = TokenHashUtils.sha256(refreshToken);
+        Session session = sessionRepository.findByRefreshTokenHashForUpdate(hash)
                 .orElseThrow(SessionExpiredException::new);
 
         if (!session.isActive()) {

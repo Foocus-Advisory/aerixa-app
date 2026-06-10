@@ -23,6 +23,9 @@ import java.util.UUID;
 @SQLRestriction("deleted_at IS NULL")
 public class AuditLog extends SoftDeletableEntity {
 
+    @Column(name = "correlation_id", length = 100)
+    private String correlationId;
+
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "user_id", nullable = true)
     private User user;
@@ -51,10 +54,23 @@ public class AuditLog extends SoftDeletableEntity {
     @Column(name = "user_agent", columnDefinition = "TEXT")
     private String userAgent;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "actor_roles", columnDefinition = "jsonb")
+    private String actorRoles;
+
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(name = "outcome", nullable = false, columnDefinition = "audit_outcome")
+    private AuditOutcome outcome = AuditOutcome.SUCCESS;
+
+    @Column(name = "reason_code", length = 100)
+    private String reasonCode;
+
     @CreationTimestamp
     @Column(nullable = false)
     private LocalDateTime timestamp;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private String details;
 
@@ -64,7 +80,14 @@ public class AuditLog extends SoftDeletableEntity {
     @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage;
 
+    @Column(name = "establishment_id")
+    private UUID establishmentId;
+
     public enum AuditAction {
-        LOGIN, LOGOUT, REFRESH, REVOKED, EXPIRED, CONFLICT, CREATE, UPDATE, DELETE
+        LOGIN, LOGOUT, REFRESH, REVOKED, EXPIRED, CONFLICT, CREATE, UPDATE, DELETE, READ
+    }
+
+    public enum AuditOutcome {
+        SUCCESS, FAILURE
     }
 }

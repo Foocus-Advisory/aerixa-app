@@ -28,6 +28,7 @@ public class UserResponse {
     private boolean emailVerified;
     private boolean mustChangePassword;
     private Set<String> roles;
+    private Set<String> permissions;
     private UUID parentAdminId;
     private String parentAdminEmail;
     private String parentAdminDisplayName;

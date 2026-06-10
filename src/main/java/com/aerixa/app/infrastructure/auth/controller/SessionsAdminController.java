@@ -12,6 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -42,7 +43,7 @@ public class SessionsAdminController {
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader,
             Authentication authentication
     ) {
-        UUID actorId = UUID.fromString(authentication.getName());
+        UUID actorId = currentUserId(authentication);
         String currentToken = extractBearerToken(authorizationHeader);
 
         LocalDateTime fromDateTime = parseStartDate(startedFrom);
@@ -74,7 +75,7 @@ public class SessionsAdminController {
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader,
             Authentication authentication
         ) {
-        UUID actorId = UUID.fromString(authentication.getName());
+        UUID actorId = currentUserId(authentication);
         String currentToken = extractBearerToken(authorizationHeader);
         LocalDateTime fromDateTime = parseStartDate(startedFrom);
         LocalDateTime toDateTime = parseEndDate(startedTo);
@@ -109,7 +110,7 @@ public class SessionsAdminController {
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader,
             Authentication authentication
     ) {
-        UUID actorId = UUID.fromString(authentication.getName());
+        UUID actorId = currentUserId(authentication);
         String currentToken = extractBearerToken(authorizationHeader);
         return ResponseEntity.ok(sessionService.getSessionByIdForAdmin(actorId, sessionId, currentToken));
     }
@@ -118,9 +119,17 @@ public class SessionsAdminController {
     @PreAuthorize("hasAuthority('sessions:revoke')")
     @Operation(summary = "Révoquer une session (admin)")
     public ResponseEntity<Void> revokeSession(@PathVariable UUID sessionId, Authentication authentication) {
-        UUID actorId = UUID.fromString(authentication.getName());
+        UUID actorId = currentUserId(authentication);
         sessionService.revokeSessionByAdmin(actorId, sessionId);
         return ResponseEntity.noContent().build();
+    }
+
+    private UUID currentUserId(Authentication authentication) {
+        Authentication resolved = authentication != null ? authentication : SecurityContextHolder.getContext().getAuthentication();
+        if (resolved == null || resolved.getName() == null) {
+            throw new IllegalStateException("Utilisateur authentifie introuvable");
+        }
+        return UUID.fromString(resolved.getName());
     }
 
     private String extractBearerToken(String authorizationHeader) {

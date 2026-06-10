@@ -6,7 +6,9 @@ import jakarta.transaction.Transactional;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -25,6 +27,11 @@ public interface SessionJpaRepository extends JpaRepository<Session, UUID>, Sess
 
     @Override
     Optional<Session> findByRefreshTokenHash(String hash);
+
+    @Override
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM Session s WHERE s.refreshTokenHash = :hash")
+    Optional<Session> findByRefreshTokenHashForUpdate(@Param("hash") String hash);
 
     @Override
     @Query("SELECT s FROM Session s WHERE s.user.id = :userId AND s.revokedAt IS NULL AND s.expiresAt > CURRENT_TIMESTAMP ORDER BY s.createdAt DESC")

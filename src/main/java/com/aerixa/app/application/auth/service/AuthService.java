@@ -12,13 +12,20 @@ import com.aerixa.app.infrastructure.notification.PasswordResetMailQueueService;
 import com.aerixa.app.infrastructure.security.JwtTokenProvider;
 import com.aerixa.app.infrastructure.security.TokenHashUtils;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
+import org.springframework.web.client.RestClient;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.Instant;
+import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -31,6 +38,23 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final SessionService sessionService;
     private final PasswordResetMailQueueService passwordResetMailQueueService;
+    private final MfaService mfaService;
+
+        @Value("${app.security.sso.google.enabled:false}")
+        private boolean googleEnabled;
+
+        @Value("${app.security.sso.google.client-id:}")
+        private String googleClientId;
+
+        @Value("${app.security.sso.google.jit-provisioning-enabled:true}")
+        private boolean googleJitProvisioningEnabled;
+
+        @Value("${app.security.sso.google.domain-restrictions:}")
+        private String googleDomainRestrictions;
+
+        private final RestClient googleRestClient = RestClient.builder()
+            .baseUrl("https://oauth2.googleapis.com")
+            .build();
 
     @Transactional
     public LoginResponse login(LoginRequest request, String ipAddress, String userAgent, String deviceName, String deviceType) {
@@ -49,6 +73,41 @@ public class AuthService {
             throw new EmailNotVerifiedException(user.getEmail());
         }
 
+        if (Boolean.TRUE.equals(user.getMfaEnabled())) {
+            MfaChallengeResponse challenge = mfaService.createLoginChallenge(user.getId());
+            return LoginResponse.builder()
+                    .mustChangePassword(Boolean.TRUE.equals(user.getMustChangePassword()))
+                    .mfaRequired(true)
+                    .mfaChallengeId(challenge.getChallengeId())
+                    .mfaMethod(challenge.getMethod())
+                    .mfaExpiresAt(challenge.getExpiresAt())
+                    .build();
+        }
+
+        return createAuthenticatedLoginResponse(user, ipAddress, userAgent, deviceName, deviceType);
+    }
+
+    @Transactional
+    public LoginResponse verifyMfa(MfaVerifyRequest request, String ipAddress, String userAgent, String deviceName, String deviceType) {
+        if (request == null || request.getChallengeId() == null || request.getCode() == null || request.getCode().isBlank()) {
+            throw new InvalidTokenException("Challenge MFA invalide");
+        }
+
+        User user = mfaService.verifyLoginChallenge(request.getChallengeId(), request.getCode());
+        return createAuthenticatedLoginResponse(user, ipAddress, userAgent, deviceName, deviceType);
+    }
+
+    @Transactional
+    public MfaSetupInitResponse initiateMfaSetup(UUID userId) {
+        return mfaService.initiateTotpSetup(userId);
+    }
+
+    @Transactional
+    public MfaSetupConfirmResponse confirmMfaSetup(UUID userId, MfaSetupConfirmRequest request) {
+        return mfaService.confirmTotpSetup(userId, request);
+    }
+
+    private LoginResponse createAuthenticatedLoginResponse(User user, String ipAddress, String userAgent, String deviceName, String deviceType) {
         sessionRepository.findActiveSessionByUserId(user.getId()).ifPresent(existing -> {
             if (isSameBrowser(existing, deviceName, userAgent, deviceType)) {
                 existing.setRevokedAt(LocalDateTime.now());
@@ -83,6 +142,7 @@ public class AuthService {
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
                 .mustChangePassword(Boolean.TRUE.equals(user.getMustChangePassword()))
+            .mfaRequired(false)
                 .user(LoginResponse.UserResponse.builder()
                         .id(user.getId())
                         .email(user.getEmail())
@@ -127,6 +187,52 @@ public class AuthService {
                 .build();
     }
 
+    @Transactional(readOnly = true)
+    public GoogleAuthConfigResponse getGoogleAuthConfig() {
+        return GoogleAuthConfigResponse.builder()
+                .enabled(googleEnabled && googleClientId != null && !googleClientId.isBlank())
+                .clientId(googleEnabled ? googleClientId : null)
+                .build();
+    }
+
+    @Transactional
+    public LoginResponse loginWithGoogle(GoogleAuthRequest request, String ipAddress, String userAgent, String deviceName, String deviceType) {
+        GoogleIdentity identity = verifyGoogleIdToken(request.getIdToken());
+        User user = resolveGoogleLoginUser(identity);
+
+        if (Boolean.TRUE.equals(user.getMfaEnabled())) {
+            MfaChallengeResponse challenge = mfaService.createLoginChallenge(user.getId());
+            return LoginResponse.builder()
+                    .mustChangePassword(Boolean.TRUE.equals(user.getMustChangePassword()))
+                    .mfaRequired(true)
+                    .mfaChallengeId(challenge.getChallengeId())
+                    .mfaMethod(challenge.getMethod())
+                    .mfaExpiresAt(challenge.getExpiresAt())
+                    .build();
+        }
+
+        return createAuthenticatedLoginResponse(user, ipAddress, userAgent, deviceName, deviceType);
+    }
+
+    @Transactional
+    public LoginResponse registerWithGoogle(GoogleAuthRequest request, String ipAddress, String userAgent, String deviceName, String deviceType) {
+        GoogleIdentity identity = verifyGoogleIdToken(request.getIdToken());
+        User user = resolveGoogleRegisterUser(identity);
+
+        if (Boolean.TRUE.equals(user.getMfaEnabled())) {
+            MfaChallengeResponse challenge = mfaService.createLoginChallenge(user.getId());
+            return LoginResponse.builder()
+                    .mustChangePassword(Boolean.TRUE.equals(user.getMustChangePassword()))
+                    .mfaRequired(true)
+                    .mfaChallengeId(challenge.getChallengeId())
+                    .mfaMethod(challenge.getMethod())
+                    .mfaExpiresAt(challenge.getExpiresAt())
+                    .build();
+        }
+
+        return createAuthenticatedLoginResponse(user, ipAddress, userAgent, deviceName, deviceType);
+    }
+
     @Transactional
     public LoginResponse refreshToken(RefreshTokenRequest request) {
         if (!jwtTokenProvider.validateToken(request.getRefreshToken())) {
@@ -138,7 +244,7 @@ public class AuthService {
             throw new InvalidTokenException("Le token fourni n'est pas un refresh token");
         }
 
-        Session existingSession = sessionService.findActiveByRefreshToken(request.getRefreshToken());
+        Session existingSession = sessionService.findActiveByRefreshTokenForUpdate(request.getRefreshToken());
         User user = existingSession.getUser();
 
         String accessToken = jwtTokenProvider.generateAccessToken(user);
@@ -154,6 +260,7 @@ public class AuthService {
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
                 .mustChangePassword(Boolean.TRUE.equals(user.getMustChangePassword()))
+            .mfaRequired(false)
                 .user(LoginResponse.UserResponse.builder()
                         .id(user.getId())
                         .email(user.getEmail())
@@ -267,5 +374,203 @@ public class AuthService {
                 && userAgent != null
                 && existing.getUserAgent().equals(userAgent)
                 && existing.getDeviceType() == incomingDeviceType;
+    }
+
+    private GoogleIdentity verifyGoogleIdToken(String idToken) {
+        ensureGoogleEnabled();
+
+        if (idToken == null || idToken.isBlank()) {
+            throw new IllegalArgumentException("Jeton Google manquant");
+        }
+
+        try {
+            GoogleTokenInfoResponse payload = googleRestClient.get()
+                    .uri(uriBuilder -> uriBuilder.path("/tokeninfo").queryParam("id_token", idToken).build())
+                    .accept(MediaType.APPLICATION_JSON)
+                    .retrieve()
+                    .body(GoogleTokenInfoResponse.class);
+
+            if (payload == null || payload.getSub() == null || payload.getEmail() == null) {
+                throw new IllegalArgumentException("Réponse Google incomplète");
+            }
+
+            if (!googleClientId.equals(payload.getAud())) {
+                throw new IllegalArgumentException("Le jeton Google ne correspond pas au client configuré");
+            }
+
+            if (!"https://accounts.google.com".equals(payload.getIss()) && !"accounts.google.com".equals(payload.getIss())) {
+                throw new IllegalArgumentException("Issuer Google invalide");
+            }
+
+            if (!Boolean.parseBoolean(payload.getEmailVerified())) {
+                throw new IllegalArgumentException("Le compte Google doit avoir un email vérifié");
+            }
+
+            long expiryEpochSeconds = Long.parseLong(payload.getExp());
+            if (Instant.ofEpochSecond(expiryEpochSeconds).isBefore(Instant.now())) {
+                throw new IllegalArgumentException("Le jeton Google a expiré");
+            }
+
+            enforceGoogleDomainRestrictions(payload.getEmail());
+
+            return new GoogleIdentity(
+                    payload.getSub().trim(),
+                    payload.getEmail().trim().toLowerCase(Locale.ROOT),
+                    emptyToNull(payload.getGivenName()),
+                    emptyToNull(payload.getFamilyName()),
+                    emptyToNull(payload.getName())
+            );
+        } catch (IllegalArgumentException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("Impossible de vérifier le jeton Google", ex);
+        }
+    }
+
+    private User resolveGoogleLoginUser(GoogleIdentity identity) {
+        User linkedUser = userRepository.findByGoogleSubject(identity.subject()).orElse(null);
+        User emailUser = userRepository.findByEmail(identity.email()).orElse(null);
+
+        if (linkedUser != null) {
+            if (!linkedUser.getEmail().equalsIgnoreCase(identity.email())) {
+                throw new IllegalArgumentException("Le compte Google fourni ne correspond pas au compte AERIXA lié");
+            }
+            validateGoogleEligibleUser(linkedUser);
+            return linkedUser;
+        }
+
+        if (emailUser == null) {
+            throw new IllegalArgumentException("Aucun compte AERIXA n'est associé à cette adresse Google. Utilisez l'inscription Google.");
+        }
+
+        validateGoogleEligibleUser(emailUser);
+        linkGoogleIdentity(emailUser, identity);
+        return userRepository.save(emailUser);
+    }
+
+    private User resolveGoogleRegisterUser(GoogleIdentity identity) {
+        User linkedUser = userRepository.findByGoogleSubject(identity.subject()).orElse(null);
+        if (linkedUser != null) {
+            validateGoogleEligibleUser(linkedUser);
+            return linkedUser;
+        }
+
+        if (userRepository.findByEmail(identity.email()).isPresent()) {
+            throw new IllegalArgumentException("Un compte AERIXA existe déjà avec cette adresse. Utilisez la connexion Google.");
+        }
+
+        if (!googleJitProvisioningEnabled) {
+            throw new IllegalArgumentException("L'inscription Google est désactivée pour le moment");
+        }
+
+        Role adminRole = roleRepository.findByName("ADMIN")
+                .orElseThrow(() -> new IllegalStateException("Le rôle ADMIN est introuvable"));
+
+        User user = User.builder()
+                .email(identity.email())
+                .username(null)
+                .firstName(identity.firstName())
+                .lastName(identity.lastName())
+                .phoneNumber(null)
+                .passwordHash(passwordEncoder.encode(UUID.randomUUID() + ":google:" + identity.subject()))
+                .status(User.UserStatus.ACTIVE)
+                .emailVerified(true)
+                .emailVerifiedAt(LocalDateTime.now())
+                .mustChangePassword(false)
+            .mfaEnabled(false)
+                .roles(Set.of(adminRole))
+                .googleSubject(identity.subject())
+                .googleLinkedAt(LocalDateTime.now())
+                .build();
+
+        return userRepository.save(user);
+    }
+
+    private void validateGoogleEligibleUser(User user) {
+        if (user.getStatus() == User.UserStatus.DISABLED) {
+            throw new UserDisabledException(user.getEmail());
+        }
+    }
+
+    private void linkGoogleIdentity(User user, GoogleIdentity identity) {
+        user.setGoogleSubject(identity.subject());
+        user.setGoogleLinkedAt(LocalDateTime.now());
+
+        if (!Boolean.TRUE.equals(user.getEmailVerified())) {
+            user.setEmailVerified(true);
+            user.setEmailVerifiedAt(LocalDateTime.now());
+        }
+
+        if ((user.getFirstName() == null || user.getFirstName().isBlank()) && identity.firstName() != null) {
+            user.setFirstName(identity.firstName());
+        }
+
+        if ((user.getLastName() == null || user.getLastName().isBlank()) && identity.lastName() != null) {
+            user.setLastName(identity.lastName());
+        }
+    }
+
+    private void ensureGoogleEnabled() {
+        if (!googleEnabled || googleClientId == null || googleClientId.isBlank()) {
+            throw new IllegalArgumentException("Google Sign-In est désactivé");
+        }
+    }
+
+    private void enforceGoogleDomainRestrictions(String email) {
+        if (googleDomainRestrictions == null || googleDomainRestrictions.isBlank()) {
+            return;
+        }
+
+        String normalizedEmail = email.trim().toLowerCase(Locale.ROOT);
+        int atIndex = normalizedEmail.lastIndexOf('@');
+        if (atIndex < 0 || atIndex == normalizedEmail.length() - 1) {
+            throw new IllegalArgumentException("Adresse email Google invalide");
+        }
+
+        String domain = normalizedEmail.substring(atIndex + 1);
+        boolean allowed = Arrays.stream(googleDomainRestrictions.split(","))
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .map(value -> value.toLowerCase(Locale.ROOT))
+                .anyMatch(domain::equals);
+
+        if (!allowed) {
+            throw new IllegalArgumentException("Le domaine Google n'est pas autorisé pour cette application");
+        }
+    }
+
+    private String emptyToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private record GoogleIdentity(String subject, String email, String firstName, String lastName, String fullName) {
+    }
+
+    @lombok.Data
+    private static class GoogleTokenInfoResponse {
+        private String iss;
+        private String aud;
+        private String sub;
+        private String email;
+        private String emailVerified;
+        private String exp;
+        private String givenName;
+        private String familyName;
+        private String name;
+
+        @com.fasterxml.jackson.annotation.JsonProperty("email_verified")
+        public void setEmailVerified(String emailVerified) {
+            this.emailVerified = emailVerified;
+        }
+
+        @com.fasterxml.jackson.annotation.JsonProperty("given_name")
+        public void setGivenName(String givenName) {
+            this.givenName = givenName;
+        }
+
+        @com.fasterxml.jackson.annotation.JsonProperty("family_name")
+        public void setFamilyName(String familyName) {
+            this.familyName = familyName;
+        }
     }
 }

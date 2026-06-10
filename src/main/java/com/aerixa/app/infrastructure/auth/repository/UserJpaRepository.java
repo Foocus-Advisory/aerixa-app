@@ -19,6 +19,9 @@ public interface UserJpaRepository extends JpaRepository<User, UUID>, UserReposi
     @Override
     Optional<User> findByEmail(String email);
 
+    @Override
+    Optional<User> findByGoogleSubject(String googleSubject);
+
     Optional<User> findByUsername(String username);
 
     @Override

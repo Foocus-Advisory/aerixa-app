@@ -89,6 +89,24 @@ public class User extends SoftDeletableEntity {
     @Column(name = "must_change_password", nullable = false)
     private Boolean mustChangePassword = false;
 
+    @Column(name = "mfa_enabled", nullable = false)
+    private Boolean mfaEnabled = false;
+
+    @Column(name = "mfa_method", length = 50)
+    private String mfaMethod;
+
+    @Column(name = "totp_secret", length = 512)
+    private String totpSecret;
+
+    @Column(name = "mfa_verified_at")
+    private LocalDateTime mfaVerifiedAt;
+
+    @Column(name = "google_subject", length = 255)
+    private String googleSubject;
+
+    @Column(name = "google_linked_at")
+    private LocalDateTime googleLinkedAt;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_admin_id")
     private User parentAdmin;

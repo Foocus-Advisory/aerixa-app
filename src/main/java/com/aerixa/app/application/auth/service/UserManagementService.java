@@ -7,6 +7,7 @@ import com.aerixa.app.application.auth.dto.PasswordResetRequestResult;
 import com.aerixa.app.application.auth.dto.UpdateProfileRequest;
 import com.aerixa.app.application.auth.dto.UpdateUserRequest;
 import com.aerixa.app.application.auth.dto.UserImportResultResponse;
+import com.aerixa.app.application.auth.dto.UserOptionResponse;
 import com.aerixa.app.application.auth.dto.UserResponse;
 import com.aerixa.app.application.auth.dto.UserStatusStatsResponse;
 import com.aerixa.app.domain.auth.entity.Role;
@@ -64,6 +65,41 @@ public class UserManagementService {
     private static final String DELETED_FILTER = "DELETED";
     private static final String PERMISSION_USERS_READ_ALL = "users:read_all";
     private static final String PERMISSION_USERS_READ_CHILDREN = "users:read_children";
+    private static final String PERMISSION_SESSIONS_READ_ALL = "sessions:read_all";
+    private static final String PERMISSION_SESSIONS_READ_CHILDREN = "sessions:read_children";
+
+    @Transactional(readOnly = true)
+    public List<UserOptionResponse> listUserOptions(UUID actorUserId) {
+        User actor = userRepository.findById(actorUserId)
+                .orElseThrow(() -> new UserNotFoundException(actorUserId));
+
+        boolean canReadAllUsers = hasPermission(actor, PERMISSION_USERS_READ_ALL) || actor.hasRole("SUPER_ADMIN");
+        boolean canReadChildrenUsers = hasPermission(actor, PERMISSION_USERS_READ_CHILDREN);
+        boolean canReadAllSessions = hasPermission(actor, PERMISSION_SESSIONS_READ_ALL);
+        boolean canReadChildrenSessions = hasPermission(actor, PERMISSION_SESSIONS_READ_CHILDREN);
+        boolean isOperator = actor.hasRole("OPERATOR") && !actor.hasRole("ADMIN") && !actor.hasRole("SUPER_ADMIN");
+
+        if (!canReadAllUsers && !canReadChildrenUsers && !canReadAllSessions && !canReadChildrenSessions && !isOperator) {
+            throw new PermissionDeniedException("users:read_all|users:read_children|sessions:read_all|sessions:read_children");
+        }
+
+        Sort sort = Sort.by("firstName").ascending()
+                .and(Sort.by("lastName").ascending())
+                .and(Sort.by("email").ascending());
+
+        List<User> scopedUsers;
+        if (canReadAllUsers || canReadAllSessions) {
+            scopedUsers = userJpaRepository.findAll(sort);
+        } else if (canReadChildrenUsers || canReadChildrenSessions) {
+            scopedUsers = userJpaRepository.findAllByParentAdminId(actor.getId(), Pageable.unpaged()).getContent();
+        } else {
+            scopedUsers = List.of(actor);
+        }
+
+        return scopedUsers.stream()
+                .map(this::toUserOption)
+                .toList();
+    }
 
     @Transactional(readOnly = true)
     public PagedResponse<UserResponse> listUsers(UUID actorUserId, int page, int size, String sortBy, String direction, String status) {
@@ -71,21 +107,35 @@ public class UserManagementService {
                 .orElseThrow(() -> new UserNotFoundException(actorUserId));
         boolean canReadAll = hasPermission(actor, PERMISSION_USERS_READ_ALL) || actor.hasRole("SUPER_ADMIN");
         boolean canReadChildren = hasPermission(actor, PERMISSION_USERS_READ_CHILDREN);
+        boolean isOperator = actor.hasRole("OPERATOR") && !actor.hasRole("ADMIN") && !actor.hasRole("SUPER_ADMIN");
 
-        if (!canReadAll && !canReadChildren) {
-            throw new PermissionDeniedException("users:read");
+        if (!canReadAll && !canReadChildren && !isOperator) {
+            throw new PermissionDeniedException("users:read_all|users:read_children");
         }
 
         Sort sort = "desc".equalsIgnoreCase(direction)
-                ? Sort.by(sortBy).descending()
-                : Sort.by(sortBy).ascending();
+            ? Sort.by(sortBy).descending()
+            : Sort.by(sortBy).ascending();
 
         Pageable pageable = PageRequest.of(Math.max(page, 0), Math.max(size, 1), sort);
 
         if (isDeletedFilter(status)) {
-            Page<User> deletedPage = canReadAll
-                ? userJpaRepository.findAllDeleted(pageable)
-                : userJpaRepository.findAllDeletedByParentAdminId(actor.getId(), pageable);
+            Page<User> deletedPage;
+            Pageable deletedPageable = buildDeletedPageable(page, size, sortBy, direction);
+            if (canReadAll) {
+                deletedPage = userJpaRepository.findAllDeleted(deletedPageable);
+            } else if (isOperator) {
+                // OPERATOR ne voit pas les utilisateurs supprimés (pas pertinent pour eux)
+                return PagedResponse.<UserResponse>builder()
+                        .content(List.of())
+                        .page(0)
+                        .size(0)
+                        .totalElements(0)
+                        .totalPages(0)
+                        .build();
+            } else {
+                deletedPage = userJpaRepository.findAllDeletedByParentAdminId(actor.getId(), deletedPageable);
+            }
             return PagedResponse.<UserResponse>builder()
                     .content(deletedPage.getContent().stream().map(this::toResponse).toList())
                     .page(deletedPage.getNumber())
@@ -101,6 +151,11 @@ public class UserManagementService {
             userPage = statusFilter == null
                 ? userJpaRepository.findAll(pageable)
                 : userJpaRepository.findAllByStatus(statusFilter, pageable);
+        } else if (isOperator) {
+            // OPERATOR voit uniquement son propre compte
+            boolean matchesStatus = statusFilter == null || statusFilter == actor.getStatus();
+            List<User> content = matchesStatus ? List.of(actor) : List.of();
+            userPage = new org.springframework.data.domain.PageImpl<>(content, pageable, matchesStatus ? 1 : 0);
         } else {
             userPage = statusFilter == null
                 ? userJpaRepository.findAllByParentAdminId(actor.getId(), pageable)
@@ -121,6 +176,7 @@ public class UserManagementService {
         User actor = userRepository.findById(actorUserId)
             .orElseThrow(() -> new UserNotFoundException(actorUserId));
         boolean canReadAll = hasPermission(actor, PERMISSION_USERS_READ_ALL) || actor.hasRole("SUPER_ADMIN");
+        boolean isOperator = actor.hasRole("OPERATOR") && !actor.hasRole("ADMIN") && !actor.hasRole("SUPER_ADMIN");
 
         if (canReadAll) {
             return UserStatusStatsResponse.builder()
@@ -129,6 +185,17 @@ public class UserManagementService {
                 .disabled(userJpaRepository.countByStatus(User.UserStatus.DISABLED))
                 .pendingVerification(userJpaRepository.countByStatus(User.UserStatus.PENDING_VERIFICATION))
                 .deleted(userJpaRepository.countDeleted())
+                .build();
+        }
+
+        if (isOperator) {
+            // OPERATOR voit ses stats personnelles uniquement
+            return UserStatusStatsResponse.builder()
+                .total(1)
+                .active(actor.getStatus() == User.UserStatus.ACTIVE ? 1 : 0)
+                .disabled(actor.getStatus() == User.UserStatus.DISABLED ? 1 : 0)
+                .pendingVerification(actor.getStatus() == User.UserStatus.PENDING_VERIFICATION ? 1 : 0)
+                .deleted(0)
                 .build();
         }
 
@@ -322,7 +389,7 @@ public class UserManagementService {
                 .orElseThrow(() -> new UserNotFoundException(userId));
 
         if (!canManageOrView(actor, user)) {
-            throw new PermissionDeniedException("users:read");
+            throw new PermissionDeniedException("users:read_all|users:read_children");
         }
 
         return toResponse(user);
@@ -366,6 +433,42 @@ public class UserManagementService {
             target.setRoles(resolvedRoles);
         }
 
+        return toResponse(userRepository.save(target));
+    }
+
+    @Transactional
+    public UserResponse assignParentAdmin(UUID actorUserId, UUID targetUserId, UUID parentAdminId) {
+        if (parentAdminId == null) {
+            throw new IllegalArgumentException("Le parent ADMIN est obligatoire");
+        }
+
+        User actor = userRepository.findById(actorUserId)
+                .orElseThrow(() -> new UserNotFoundException(actorUserId));
+        User target = userJpaRepository.findByIdIncludingDeleted(targetUserId)
+                .orElseThrow(() -> new UserNotFoundException(targetUserId));
+
+        if (target.isDeleted()) {
+            throw new IllegalArgumentException("Impossible d'affecter un parent a un utilisateur supprime");
+        }
+
+        if (!target.hasRole("OPERATOR")) {
+            throw new IllegalArgumentException("L'affectation parent est reservee aux utilisateurs OPERATOR");
+        }
+
+        enforceActorCanManageTarget(actor, target);
+
+        User parentAdmin = userJpaRepository.findByIdIncludingDeleted(parentAdminId)
+                .orElseThrow(() -> new UserNotFoundException(parentAdminId));
+
+        if (parentAdmin.isDeleted()) {
+            throw new IllegalArgumentException("Le parent selectionne est supprime");
+        }
+
+        if (!parentAdmin.hasRole("ADMIN") && !parentAdmin.hasRole("SUPER_ADMIN")) {
+            throw new IllegalArgumentException("Le parent selectionne doit etre ADMIN ou SUPER_ADMIN");
+        }
+
+        target.setParentAdmin(parentAdmin);
         return toResponse(userRepository.save(target));
     }
 
@@ -428,7 +531,7 @@ public class UserManagementService {
                 .orElseThrow(() -> new UserNotFoundException(targetUserId));
 
         if (!actor.getId().equals(target.getId()) && !canManageOrView(actor, target)) {
-            throw new PermissionDeniedException("users:read");
+            throw new PermissionDeniedException("users:read_all|users:read_children");
         }
 
         if (!target.hasProfilePhoto()) {
@@ -841,6 +944,10 @@ public class UserManagementService {
 
     private UserResponse toResponse(User user) {
         Set<String> roles = user.getRoles().stream().map(Role::getName).collect(java.util.stream.Collectors.toSet());
+        Set<String> permissions = user.getRoles().stream()
+            .flatMap(role -> role.getPermissions().stream())
+            .map(permission -> permission.getName())
+            .collect(java.util.stream.Collectors.toSet());
         User parentAdmin = user.getParentAdmin();
         String parentDisplayName = null;
         if (parentAdmin != null) {
@@ -867,6 +974,7 @@ public class UserManagementService {
                 .emailVerified(Boolean.TRUE.equals(user.getEmailVerified()))
                 .mustChangePassword(Boolean.TRUE.equals(user.getMustChangePassword()))
                 .roles(roles)
+                .permissions(permissions)
             .parentAdminId(parentAdmin != null ? parentAdmin.getId() : null)
             .parentAdminEmail(parentAdmin != null ? parentAdmin.getEmail() : null)
             .parentAdminDisplayName(parentDisplayName)
@@ -874,6 +982,22 @@ public class UserManagementService {
                 .deletedAt(user.getDeletedAt())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
+                .build();
+    }
+
+    private UserOptionResponse toUserOption(User user) {
+        String firstName = user.getFirstName() == null ? "" : user.getFirstName().trim();
+        String lastName = user.getLastName() == null ? "" : user.getLastName().trim();
+        String displayName = (firstName + " " + lastName).trim();
+        if (displayName.isBlank()) {
+            String username = user.getUsername() == null ? "" : user.getUsername().trim();
+            displayName = username.isBlank() ? user.getEmail() : username;
+        }
+
+        return UserOptionResponse.builder()
+                .id(user.getId())
+                .displayName(displayName)
+                .email(user.getEmail())
                 .build();
     }
 
@@ -894,6 +1018,28 @@ public class UserManagementService {
 
     private boolean isDeletedFilter(String status) {
         return status != null && DELETED_FILTER.equalsIgnoreCase(status.trim());
+    }
+
+    private Pageable buildDeletedPageable(int page, int size, String sortBy, String direction) {
+        // Les requetes deleted sont natives: il faut trier par noms de colonnes SQL.
+        String normalized = sortBy == null ? "createdAt" : sortBy.trim();
+        String sqlSortBy = switch (normalized) {
+            case "createdAt" -> "created_at";
+            case "updatedAt" -> "updated_at";
+            case "deletedAt" -> "deleted_at";
+            case "firstName" -> "first_name";
+            case "lastName" -> "last_name";
+            case "phoneNumber" -> "phone_number";
+            case "parentAdminId" -> "parent_admin_id";
+            case "email", "username", "status" -> normalized;
+            default -> "created_at";
+        };
+
+        Sort sort = "desc".equalsIgnoreCase(direction)
+                ? Sort.by(sqlSortBy).descending()
+                : Sort.by(sqlSortBy).ascending();
+
+        return PageRequest.of(Math.max(page, 0), Math.max(size, 1), sort);
     }
 
     private String readCellValue(Row row, int index, DataFormatter formatter) {
