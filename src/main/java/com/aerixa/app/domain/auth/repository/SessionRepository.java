@@ -15,6 +15,7 @@ public interface SessionRepository {
     Optional<Session> findById(UUID id);
     Optional<Session> findByAccessTokenHash(String hash);
     Optional<Session> findByRefreshTokenHash(String hash);
+    Optional<Session> findByRefreshTokenHashForUpdate(String hash);
     Optional<Session> findActiveSessionByUserId(UUID userId);
     List<Session> findAllActiveSessionsByUserId(UUID userId);
     Page<Session> findAllForAdmin(

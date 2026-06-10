@@ -8,7 +8,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -24,31 +26,42 @@ public class SessionsController {
     private final SessionService sessionService;
 
     @GetMapping
+    @PreAuthorize("hasAuthority('sessions:read_own')")
     @Operation(summary = "Lister mes sessions")
     public ResponseEntity<List<SessionResponse>> listSessions(Authentication authentication,
                                                               @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader) {
-        UUID userId = UUID.fromString(authentication.getName());
+        UUID userId = currentUserId(authentication);
         String currentToken = extractBearerToken(authorizationHeader);
         return ResponseEntity.ok(sessionService.getUserActiveSessions(userId, currentToken));
     }
 
     @DeleteMapping("/{sessionId}")
+    @PreAuthorize("hasAuthority('sessions:revoke_own')")
     @Operation(summary = "Révoquer une session")
     public ResponseEntity<Void> revokeSession(Authentication authentication,
                                               @PathVariable UUID sessionId) {
-        UUID userId = UUID.fromString(authentication.getName());
+        UUID userId = currentUserId(authentication);
         sessionService.revokeSession(userId, sessionId);
         return ResponseEntity.noContent().build();
     }
 
+    @PreAuthorize("hasAuthority('sessions:revoke_others')")
     @PostMapping("/revoke-others")
     @Operation(summary = "Révoquer toutes les autres sessions")
     public ResponseEntity<Void> revokeOthers(Authentication authentication,
                                              @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader) {
-        UUID userId = UUID.fromString(authentication.getName());
+        UUID userId = currentUserId(authentication);
         String currentToken = extractBearerToken(authorizationHeader);
         sessionService.revokeOtherSessions(userId, currentToken);
         return ResponseEntity.noContent().build();
+    }
+
+    private UUID currentUserId(Authentication authentication) {
+        Authentication resolved = authentication != null ? authentication : SecurityContextHolder.getContext().getAuthentication();
+        if (resolved == null || resolved.getName() == null) {
+            throw new IllegalStateException("Utilisateur authentifie introuvable");
+        }
+        return UUID.fromString(resolved.getName());
     }
 
     private String extractBearerToken(String authorizationHeader) {

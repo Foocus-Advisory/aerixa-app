@@ -11,11 +11,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.HttpServletRequest;
 
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -44,10 +46,69 @@ public class AuthController {
         return ResponseEntity.status(HttpStatus.CREATED).body(authService.register(request));
     }
 
+    @GetMapping("/google/config")
+    @Operation(summary = "Configuration publique Google Sign-In")
+    public ResponseEntity<GoogleAuthConfigResponse> googleConfig() {
+        return ResponseEntity.ok(authService.getGoogleAuthConfig());
+    }
+
+    @PostMapping("/google/login")
+    @Operation(summary = "Connexion via Google")
+    public ResponseEntity<LoginResponse> loginWithGoogle(@RequestBody @Valid GoogleAuthRequest request,
+                                                         @RequestHeader(value = "X-Forwarded-For", required = false) String forwardedFor,
+                                                         @RequestHeader(value = "User-Agent", required = false) String userAgent,
+                                                         @RequestHeader(value = "X-Device-Name", required = false) String deviceName,
+                                                         @RequestHeader(value = "X-Device-Type", required = false) String deviceType,
+                                                         @RequestHeader(value = "X-Real-IP", required = false) String realIp) {
+        String ipAddress = resolveIpAddress(forwardedFor, realIp);
+        return ResponseEntity.ok(authService.loginWithGoogle(request, ipAddress, userAgent, deviceName, deviceType));
+    }
+
+    @PostMapping("/google/register")
+    @Operation(summary = "Inscription via Google")
+    public ResponseEntity<LoginResponse> registerWithGoogle(@RequestBody @Valid GoogleAuthRequest request,
+                                                            @RequestHeader(value = "X-Forwarded-For", required = false) String forwardedFor,
+                                                            @RequestHeader(value = "User-Agent", required = false) String userAgent,
+                                                            @RequestHeader(value = "X-Device-Name", required = false) String deviceName,
+                                                            @RequestHeader(value = "X-Device-Type", required = false) String deviceType,
+                                                            @RequestHeader(value = "X-Real-IP", required = false) String realIp) {
+        String ipAddress = resolveIpAddress(forwardedFor, realIp);
+        return ResponseEntity.ok(authService.registerWithGoogle(request, ipAddress, userAgent, deviceName, deviceType));
+    }
+
     @PostMapping("/refresh")
     @Operation(summary = "Renouveler les tokens")
     public ResponseEntity<LoginResponse> refresh(@RequestBody @Valid RefreshTokenRequest request) {
         return ResponseEntity.ok(authService.refreshToken(request));
+    }
+
+    @PostMapping("/verify-mfa")
+    @Operation(summary = "Verifier un challenge MFA")
+    public ResponseEntity<LoginResponse> verifyMfa(@RequestBody @Valid MfaVerifyRequest request,
+                                                   @RequestHeader(value = "X-Forwarded-For", required = false) String forwardedFor,
+                                                   @RequestHeader(value = "User-Agent", required = false) String userAgent,
+                                                   @RequestHeader(value = "X-Device-Name", required = false) String deviceName,
+                                                   @RequestHeader(value = "X-Device-Type", required = false) String deviceType,
+                                                   @RequestHeader(value = "X-Real-IP", required = false) String realIp) {
+        String ipAddress = resolveIpAddress(forwardedFor, realIp);
+        return ResponseEntity.ok(authService.verifyMfa(request, ipAddress, userAgent, deviceName, deviceType));
+    }
+
+    @PostMapping("/mfa/setup/initiate")
+    @SecurityRequirement(name = "bearerAuth")
+    @Operation(summary = "Initialiser la configuration MFA TOTP")
+    public ResponseEntity<MfaSetupInitResponse> initiateMfaSetup(Authentication authentication) {
+        UUID userId = UUID.fromString(authentication.getName());
+        return ResponseEntity.ok(authService.initiateMfaSetup(userId));
+    }
+
+    @PostMapping("/mfa/setup/confirm")
+    @SecurityRequirement(name = "bearerAuth")
+    @Operation(summary = "Confirmer et activer la MFA TOTP")
+    public ResponseEntity<MfaSetupConfirmResponse> confirmMfaSetup(Authentication authentication,
+                                                                   @RequestBody @Valid MfaSetupConfirmRequest request) {
+        UUID userId = UUID.fromString(authentication.getName());
+        return ResponseEntity.ok(authService.confirmMfaSetup(userId, request));
     }
 
     @PostMapping("/logout")

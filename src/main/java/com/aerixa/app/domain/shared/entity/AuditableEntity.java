@@ -11,6 +11,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Getter
 @Setter
@@ -26,4 +27,16 @@ public abstract class AuditableEntity extends BaseEntity {
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
+
+    @Column(name = "created_by_user_id")
+    private UUID createdByUserId;
+
+    @Column(name = "created_by_label", length = 255)
+    private String createdByLabel;
+
+    @Column(name = "updated_by_user_id")
+    private UUID updatedByUserId;
+
+    @Column(name = "updated_by_label", length = 255)
+    private String updatedByLabel;
 }

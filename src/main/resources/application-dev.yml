@@ -1,10 +1,12 @@
+debug: false
+
 spring:
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/aerixa_dev}
     username: ${DB_USERNAME:aerixa_user}
     password: ${DB_PASSWORD:aerixa_password}
   jpa:
-    show-sql: true
+    show-sql: false
   mail:
     host: ${MAIL_HOST:sandbox.smtp.mailtrap.io}
     port: ${MAIL_PORT:587}
@@ -49,3 +51,9 @@ logging:
   level:
     com.aerixa: DEBUG
     org.springframework.security: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.springframework.orm.jpa.JpaTransactionManager: WARN
+    org.hibernate.orm.core: WARN
+    org.hibernate.orm.event: WARN
+    org.hibernate.session.metrics: WARN
+    org.springframework.boot.autoconfigure.logging.ConditionEvaluationReportLoggingListener: WARN

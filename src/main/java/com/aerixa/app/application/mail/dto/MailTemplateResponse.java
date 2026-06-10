@@ -26,7 +26,7 @@ public class MailTemplateResponse {
     private Boolean isCurrent;
     private String language;
     private String versionNotes;
-    private String createdByUserId;
+    private UUID createdByUserId;
     private String lastModifiedByUserId;
     private Long publishedAt;
     private String supportedVariables;

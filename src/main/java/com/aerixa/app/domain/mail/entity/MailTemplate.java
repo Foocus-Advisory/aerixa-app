@@ -3,6 +3,7 @@ package com.aerixa.app.domain.mail.entity;
 import com.aerixa.app.domain.shared.entity.AuditableEntity;
 import jakarta.persistence.*;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 /**
  * Représente un template de mail avec support de versioning.
@@ -21,7 +22,7 @@ import lombok.*;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
+@SuperBuilder
 public class MailTemplate extends AuditableEntity {
 
     /**
@@ -81,12 +82,6 @@ public class MailTemplate extends AuditableEntity {
      */
     @Column(length = 500)
     private String versionNotes;
-
-    /**
-     * UUID de l'utilisateur qui a créé cette version
-     */
-    @Column(length = 36)
-    private String createdByUserId;
 
     /**
      * UUID de l'utilisateur qui a modifié cette version en dernier

@@ -76,7 +76,8 @@ public class MailTemplateService {
     /**
      * Crée un nouveau template ou une nouvelle version d'un template existant
      */
-    public MailTemplateResponse createOrUpdateTemplate(MailTemplateRequest request, String currentUserId) {
+    public MailTemplateResponse createOrUpdateTemplate(MailTemplateRequest request, String currentUserIdStr) {
+        UUID currentUserId = currentUserIdStr != null ? UUID.fromString(currentUserIdStr) : null;
         MailType mailType = mailTypeRepository.findById(request.getMailTypeId())
                 .orElseThrow(() -> new ResourceNotFoundException("MailType not found with id: " + request.getMailTypeId()));
 
@@ -107,7 +108,7 @@ public class MailTemplateService {
                     .isCurrent(true)
                     .versionNotes(request.getVersionNotes())
                     .createdByUserId(currentUserId)
-                    .lastModifiedByUserId(currentUserId)
+                    .lastModifiedByUserId(currentUserIdStr)
                     .supportedVariables(request.getSupportedVariables())
                     .customStyles(request.getCustomStyles())
                     .publishedAt(Instant.now().toEpochMilli())
@@ -123,7 +124,7 @@ public class MailTemplateService {
                 template.setHtmlContent(request.getHtmlContent());
                 template.setTextContent(request.getTextContent());
                 template.setPreview(request.getPreview());
-                template.setLastModifiedByUserId(currentUserId);
+                template.setLastModifiedByUserId(currentUserIdStr);
                 template.setVersionNotes(request.getVersionNotes());
                 template.setSupportedVariables(request.getSupportedVariables());
                 template.setCustomStyles(request.getCustomStyles());
@@ -141,7 +142,7 @@ public class MailTemplateService {
                         .isCurrent(true)
                         .versionNotes(request.getVersionNotes())
                         .createdByUserId(currentUserId)
-                        .lastModifiedByUserId(currentUserId)
+                        .lastModifiedByUserId(currentUserIdStr)
                         .supportedVariables(request.getSupportedVariables())
                         .customStyles(request.getCustomStyles())
                         .publishedAt(Instant.now().toEpochMilli())
