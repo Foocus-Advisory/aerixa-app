@@ -19,6 +19,8 @@ public interface EntryDiplomaJpaRepository extends JpaRepository<EntryDiploma, U
 
     Optional<EntryDiploma> findByIdAndEstablishmentId(UUID id, UUID establishmentId);
 
+    Optional<EntryDiploma> findByEstablishmentIdAndCodeIgnoreCase(UUID establishmentId, String code);
+
     boolean existsByEstablishmentIdAndCodeIgnoreCase(UUID establishmentId, String code);
 
     boolean existsByEstablishmentIdAndCodeIgnoreCaseAndIdNot(UUID establishmentId, String code, UUID id);

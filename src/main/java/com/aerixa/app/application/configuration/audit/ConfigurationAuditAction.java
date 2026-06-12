@@ -10,5 +10,6 @@ public enum ConfigurationAuditAction {
     ACTIVATE,
     DEACTIVATE,
     EXPORT,
-    IMPORT
+    IMPORT,
+    TRANSITION
 }

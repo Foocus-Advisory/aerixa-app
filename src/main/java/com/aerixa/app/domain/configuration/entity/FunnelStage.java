@@ -48,4 +48,7 @@ public class FunnelStage extends SoftDeletableEntity {
 
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
+
+    @Column(name = "is_default_auto_rejection", nullable = false)
+    private boolean defaultAutoRejection = false;
 }

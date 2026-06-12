@@ -19,6 +19,8 @@ public class AppProperties {
     private Portal portal = new Portal();
     private Email email = new Email();
     private Notifications notifications = new Notifications();
+    private Security security = new Security();
+    private Whatsapp whatsapp = new Whatsapp();
 
     @Getter
     @Setter
@@ -84,5 +86,31 @@ public class AppProperties {
             /** Active/désactive les notifications WebSocket — NOTIF_WEBSOCKET_ENABLED */
             private boolean enabled = true;
         }
+    }
+
+    @Getter
+    @Setter
+    public static class Security {
+        private Whatsapp whatsapp = new Whatsapp();
+
+        @Getter
+        @Setter
+        public static class Whatsapp {
+            /** Cle maitre AES-256 (base64, 32 octets decodes) pour le chiffrement WhatsApp — WHATSAPP_MASTER_ENCRYPTION_KEY */
+            private String masterEncryptionKey;
+
+            /** App secret Meta utilise pour verifier la signature X-Hub-Signature-256 des webhooks — WHATSAPP_APP_SECRET */
+            private String appSecret;
+        }
+    }
+
+    @Getter
+    @Setter
+    public static class Whatsapp {
+        /** URL de base de l'API Graph Meta — WHATSAPP_GRAPH_API_BASE_URL */
+        private String graphApiBaseUrl = "https://graph.facebook.com";
+
+        /** Version de l'API Graph Meta utilisee pour les appels sortants — WHATSAPP_GRAPH_API_VERSION */
+        private String graphApiVersion = "v21.0";
     }
 }

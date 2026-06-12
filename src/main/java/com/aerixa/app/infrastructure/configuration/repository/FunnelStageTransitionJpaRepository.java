@@ -21,6 +21,8 @@ public interface FunnelStageTransitionJpaRepository extends JpaRepository<Funnel
 
     boolean existsByEstablishmentIdAndFromStageIdAndToStageId(UUID establishmentId, UUID fromStageId, UUID toStageId);
 
+    boolean existsByEstablishmentIdAndFromStageIdAndToStageIdAndActiveTrue(UUID establishmentId, UUID fromStageId, UUID toStageId);
+
     boolean existsByEstablishmentIdAndFromStageIdAndToStageIdAndIdNot(UUID establishmentId, UUID fromStageId, UUID toStageId, UUID id);
 
     @Modifying

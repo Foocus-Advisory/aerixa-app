@@ -54,6 +54,9 @@ cors:
 
 app:
   security:
+    whatsapp:
+      master-encryption-key: ${WHATSAPP_MASTER_ENCRYPTION_KEY:}
+      app-secret: ${WHATSAPP_APP_SECRET:}
     mfa:
       enabled: ${MFA_ENABLED:false}
       challenge-expiry-seconds: ${MFA_CHALLENGE_EXPIRY_SECONDS:300}
@@ -83,6 +86,9 @@ app:
       stage-recipient: ${NOTIF_MAIL_STAGE_RECIPIENT:}
     websocket:
       enabled: ${NOTIF_WEBSOCKET_ENABLED:true}
+  whatsapp:
+    graph-api-base-url: ${WHATSAPP_GRAPH_API_BASE_URL:https://graph.facebook.com}
+    graph-api-version: ${WHATSAPP_GRAPH_API_VERSION:v21.0}
 
 server:
   servlet:

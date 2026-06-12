@@ -58,6 +58,13 @@ public enum MailTypeCategory {
             "SYSTEM_NOTIFICATION",
             "Notification par mail",
             "Notification systeme par email"
+    ),
+    CANDIDATE_APPLICATION_ACCEPTED(
+            "CANDIDATES",
+            "APPLICATION_ACCEPTED",
+            "CANDIDATE_APPLICATION_ACCEPTED",
+            "Candidature acceptee",
+            "Felicitations envoyees au candidat lorsque sa candidature atteint une etape d'admission finale"
     );
 
     private final String module;
