@@ -4,9 +4,12 @@ import type {
   AcquisitionChannelResponse,
   AssignParentAdminRequest,
   ApiSuccessResponse,
+  CandidateImportResultResponse,
+  CandidateResponse,
   ChangePasswordRequest,
   CreateAcademicLevelRequest,
   CreateAcquisitionChannelRequest,
+  CreateCandidateRequest,
   CreateEntryDiplomaRequest,
   CreateEstablishmentRequest,
   CreateFunnelStageRequest,
@@ -14,6 +17,7 @@ import type {
   CreateProgramTrackLevelRequest,
   CreateProgramTrackRequest,
   CreateUserRequest,
+  EligibleProgramTrackLevelResponse,
   EntryDiplomaResponse,
   EstablishmentResponse,
   FunnelStageImportResultResponse,
@@ -24,6 +28,7 @@ import type {
   UpdateProfileRequest,
   UpdateAcademicLevelRequest,
   UpdateAcquisitionChannelRequest,
+  UpdateCandidateRequest,
   UpdateEntryDiplomaRequest,
   UpdateEstablishmentRequest,
   UpdateFunnelStageRequest,
@@ -1038,6 +1043,46 @@ export const api = {
         apiRequest<PipelineViewPreferenceResponse>(`/api/v1/pipeline-view-preference?establishmentId=${establishmentId}`, "GET", undefined, token),
       update: (token: string, payload: UpdatePipelineViewPreferenceRequest) =>
         apiRequest<PipelineViewPreferenceResponse>("/api/v1/pipeline-view-preference", "PUT", payload, token),
+    },
+  },
+  candidates: {
+    create: (token: string, payload: CreateCandidateRequest) =>
+      apiRequest<CandidateResponse>("/api/v1/candidates", "POST", payload, token),
+    list: (token: string, establishmentId: string) =>
+      apiRequest<CandidateResponse[]>(`/api/v1/candidates?establishmentId=${establishmentId}`, "GET", undefined, token),
+    get: (token: string, id: string, establishmentId: string) =>
+      apiRequest<CandidateResponse>(`/api/v1/candidates/${id}?establishmentId=${establishmentId}`, "GET", undefined, token),
+    update: (token: string, id: string, establishmentId: string, payload: UpdateCandidateRequest) =>
+      apiRequest<CandidateResponse>(`/api/v1/candidates/${id}?establishmentId=${establishmentId}`, "PATCH", payload, token),
+    delete: (token: string, id: string, establishmentId: string) =>
+      apiRequest<void>(`/api/v1/candidates/${id}?establishmentId=${establishmentId}`, "DELETE", undefined, token),
+    hardDelete: (token: string, id: string, establishmentId: string) =>
+      apiRequest<void>(`/api/v1/candidates/${id}/hard?establishmentId=${establishmentId}`, "DELETE", undefined, token),
+    activate: (token: string, id: string, establishmentId: string) =>
+      apiRequest<CandidateResponse>(`/api/v1/candidates/${id}/activate?establishmentId=${establishmentId}`, "POST", undefined, token),
+    deactivate: (token: string, id: string, establishmentId: string) =>
+      apiRequest<CandidateResponse>(`/api/v1/candidates/${id}/deactivate?establishmentId=${establishmentId}`, "POST", undefined, token),
+    listEligibleProgramTrackLevels: (token: string, id: string, establishmentId: string) =>
+      apiRequest<EligibleProgramTrackLevelResponse[]>(`/api/v1/candidates/${id}/eligible-program-track-levels?establishmentId=${establishmentId}`, "GET", undefined, token),
+    exportExcel: (token: string, establishmentId: string) =>
+      apiRequestBlob(`/api/v1/candidates/export?establishmentId=${establishmentId}`, "GET", token),
+    importTemplate: (token: string) =>
+      apiRequestBlob("/api/v1/candidates/import-template", "GET", token),
+    importExcel: async (token: string, establishmentId: string, file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch(`${API_BASE_URL}/api/v1/candidates/import?establishmentId=${establishmentId}`, {
+        method: "POST",
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: formData,
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        let errorBody: ApiErrorPayload | undefined;
+        try { errorBody = (await response.json()) as ApiErrorPayload; } catch { /* ignore */ }
+        throw new ApiError(response.status, errorBody);
+      }
+      return (await response.json()) as CandidateImportResultResponse;
     },
   },
 };

@@ -105,7 +105,27 @@ export type AppPermission =
   | "funnel_stage_transitions:activate"
   | "funnel_stage_transitions:deactivate"
   | "pipeline_view_preference:read"
-  | "pipeline_view_preference:update";
+  | "pipeline_view_preference:update"
+  | "candidates:create"
+  | "candidates:read"
+  | "candidates:list"
+  | "candidates:update"
+  | "candidates:delete"
+  | "candidates:hard_delete"
+  | "candidates:activate"
+  | "candidates:deactivate"
+  | "candidates:export"
+  | "candidates:import"
+  | "candidate_applications:create"
+  | "candidate_applications:read"
+  | "candidate_applications:list"
+  | "candidate_applications:transition"
+  | "candidate_applications:history"
+  | "candidate_notes:create"
+  | "candidate_notes:list"
+  | "candidate_conversations:read"
+  | "candidate_conversations:list"
+  | "candidate_conversations:send_message";
 
 const ROLE_FALLBACK_PERMISSIONS: Record<string, AppPermission[]> = {
   SUPER_ADMIN: [
@@ -214,6 +234,26 @@ const ROLE_FALLBACK_PERMISSIONS: Record<string, AppPermission[]> = {
     "funnel_stage_transitions:deactivate",
     "pipeline_view_preference:read",
     "pipeline_view_preference:update",
+    "candidates:create",
+    "candidates:read",
+    "candidates:list",
+    "candidates:update",
+    "candidates:delete",
+    "candidates:hard_delete",
+    "candidates:activate",
+    "candidates:deactivate",
+    "candidates:export",
+    "candidates:import",
+    "candidate_applications:create",
+    "candidate_applications:read",
+    "candidate_applications:list",
+    "candidate_applications:transition",
+    "candidate_applications:history",
+    "candidate_notes:create",
+    "candidate_notes:list",
+    "candidate_conversations:read",
+    "candidate_conversations:list",
+    "candidate_conversations:send_message",
   ],
   ADMIN: [
     "users:read_children",
@@ -317,6 +357,26 @@ const ROLE_FALLBACK_PERMISSIONS: Record<string, AppPermission[]> = {
     "funnel_stage_transitions:deactivate",
     "pipeline_view_preference:read",
     "pipeline_view_preference:update",
+    "candidates:create",
+    "candidates:read",
+    "candidates:list",
+    "candidates:update",
+    "candidates:delete",
+    "candidates:hard_delete",
+    "candidates:activate",
+    "candidates:deactivate",
+    "candidates:export",
+    "candidates:import",
+    "candidate_applications:create",
+    "candidate_applications:read",
+    "candidate_applications:list",
+    "candidate_applications:transition",
+    "candidate_applications:history",
+    "candidate_notes:create",
+    "candidate_notes:list",
+    "candidate_conversations:read",
+    "candidate_conversations:list",
+    "candidate_conversations:send_message",
   ],
   OPERATOR: [
     "sessions:read_own",
@@ -346,7 +406,10 @@ export type TabKey =
   | "config-program-track-levels"
   | "config-acquisition-channels"
   | "config-funnel-stages"
-  | "config-funnel-stage-transitions";
+  | "config-funnel-stage-transitions"
+  | "candidates"
+  | "candidate-applications"
+  | "candidate-conversations";
 
 const TAB_PERMISSIONS: Partial<Record<TabKey, AppPermission[]>> = {
   users: ["users:read_all", "users:read_children"],
@@ -376,6 +439,9 @@ const TAB_PERMISSIONS: Partial<Record<TabKey, AppPermission[]>> = {
   "config-acquisition-channels": ["acquisition_channels:list"],
   "config-funnel-stages": ["funnel_stages:list"],
   "config-funnel-stage-transitions": ["funnel_stage_transitions:list"],
+  candidates: ["candidates:list"],
+  "candidate-applications": ["candidate_applications:list"],
+  "candidate-conversations": ["candidate_conversations:list"],
 };
 
 export function buildPermissionSet(user: Pick<UserResponse, "roles" | "permissions"> | null): Set<string> {

@@ -25,6 +25,9 @@ import {
   Megaphone,
   GitBranch,
   Filter,
+  Contact,
+  ClipboardList,
+  MessageCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -104,6 +107,16 @@ const menusByLocale = {
         { id: "config-funnel-stage-transitions", label: "Transitions du funnel", tab: "config-funnel-stage-transitions", icon: GitBranch },
       ],
     },
+    {
+      id: "candidates",
+      label: "Candidats",
+      icon: Contact,
+      subItems: [
+        { id: "candidates-list", label: "Candidats", tab: "candidates", icon: Contact },
+        { id: "candidates-applications", label: "Candidatures", tab: "candidate-applications", icon: ClipboardList },
+        { id: "candidates-conversations", label: "Conversations WhatsApp", tab: "candidate-conversations", icon: MessageCircle },
+      ],
+    },
   ] satisfies SidebarItem[],
   en: [
     {
@@ -162,6 +175,16 @@ const menusByLocale = {
           { id: "config-acquisition-channels", label: "Acquisition channels", tab: "config-acquisition-channels", icon: Megaphone },
           { id: "config-funnel-stages", label: "Funnel stages", tab: "config-funnel-stages", icon: Filter },
           { id: "config-funnel-stage-transitions", label: "Funnel transitions", tab: "config-funnel-stage-transitions", icon: GitBranch },
+        ],
+      },
+      {
+        id: "candidates",
+        label: "Candidates",
+        icon: Contact,
+        subItems: [
+          { id: "candidates-list", label: "Candidates", tab: "candidates", icon: Contact },
+          { id: "candidates-applications", label: "Applications", tab: "candidate-applications", icon: ClipboardList },
+          { id: "candidates-conversations", label: "WhatsApp conversations", tab: "candidate-conversations", icon: MessageCircle },
         ],
       },
     ] satisfies SidebarItem[],

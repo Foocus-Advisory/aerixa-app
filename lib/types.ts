@@ -611,3 +611,92 @@ export interface CreateFunnelStageTransitionRequest {
 export interface UpdateFunnelStageTransitionRequest {
   toStageId?: string;
 }
+
+export type CandidateGender = "MALE" | "FEMALE" | "UNSPECIFIED";
+
+export type CandidateStatus = "ACTIVE" | "ARCHIVED";
+
+export type WhatsappTarget = "PARENT_1" | "PARENT_2" | "CANDIDATE";
+
+export interface CandidateResponse {
+  id: string;
+  establishmentId: string;
+  firstName: string;
+  lastName: string;
+  parentPhone1?: string;
+  parentPhone2?: string;
+  candidatePhone: string;
+  email?: string;
+  acquisitionChannelId: string;
+  entryDiplomaId: string;
+  previousSchool?: string;
+  addressLine?: string;
+  city?: string;
+  country?: string;
+  dateOfBirth?: string;
+  gender?: CandidateGender;
+  observations?: string;
+  preferredWhatsappTarget: WhatsappTarget;
+  status: CandidateStatus;
+  createdByUserId?: string;
+  createdByLabel?: string;
+  updatedByUserId?: string;
+  updatedByLabel?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateCandidateRequest {
+  establishmentId: string;
+  firstName: string;
+  lastName: string;
+  parentPhone1?: string;
+  parentPhone2?: string;
+  candidatePhone: string;
+  email?: string;
+  acquisitionChannelId: string;
+  entryDiplomaId: string;
+  previousSchool?: string;
+  addressLine?: string;
+  city?: string;
+  country?: string;
+  dateOfBirth?: string;
+  gender?: CandidateGender;
+  observations?: string;
+  preferredWhatsappTarget?: WhatsappTarget;
+}
+
+export interface UpdateCandidateRequest {
+  firstName?: string;
+  lastName?: string;
+  parentPhone1?: string;
+  parentPhone2?: string;
+  candidatePhone?: string;
+  email?: string;
+  acquisitionChannelId?: string;
+  entryDiplomaId?: string;
+  previousSchool?: string;
+  addressLine?: string;
+  city?: string;
+  country?: string;
+  dateOfBirth?: string;
+  gender?: CandidateGender;
+  observations?: string;
+  preferredWhatsappTarget?: WhatsappTarget;
+}
+
+export interface CandidateImportResultResponse {
+  totalRows: number;
+  created: number;
+  failed: number;
+  errors: string[];
+}
+
+export interface EligibleProgramTrackLevelResponse {
+  programTrackLevelId: string;
+  programTrackId: string;
+  programTrackName: string;
+  academicLevelId: string;
+  academicLevelLabel: string;
+  academicLevelRankOrder: number;
+}
