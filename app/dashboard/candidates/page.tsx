@@ -47,9 +47,12 @@ import type {
   CandidateResponse,
   CandidateStatus,
   CreateCandidateRequest,
+  PagedResponse,
   UpdateCandidateRequest,
   WhatsappTarget,
 } from "@/lib/types";
+
+type PagedResponseLike = PagedResponse<CandidateResponse>;
 
 type CandidateFormState = {
   firstName: string;
@@ -400,8 +403,18 @@ export default function CandidatesPage() {
     setPage(0);
   }, [effectiveEstId, statusFilter, debouncedSearch, pageSize]);
 
+  const candidatesQueryKey = [
+    "candidates",
+    "page",
+    effectiveEstId,
+    page,
+    pageSize,
+    statusFilter,
+    debouncedSearch,
+  ] as const;
+
   const query = useQuery({
-    queryKey: ["candidates", "page", effectiveEstId, page, pageSize, statusFilter, debouncedSearch],
+    queryKey: candidatesQueryKey,
     queryFn: () =>
       api.candidates.listPaged(accessToken, effectiveEstId, {
         page,
@@ -471,16 +484,38 @@ export default function CandidatesPage() {
     onError: (err) => toast({ variant: "error", title: locale === "fr" ? "Erreur" : "Error", description: (err as Error).message }),
   });
 
+  // Bascule optimiste du statut sur la page courante du cache : applique le nouveau statut
+  // immediatement, et restaure l'etat precedent si la requete echoue. La queryKey est capturee
+  // au moment de l'appel pour cibler exactement la page/filtre affiches a cet instant.
+  const optimisticallySetStatus = (id: string, nextStatus: CandidateStatus) => {
+    const previous = queryClient.getQueryData<PagedResponseLike>(candidatesQueryKey);
+    if (previous) {
+      queryClient.setQueryData<PagedResponseLike>(candidatesQueryKey, {
+        ...previous,
+        content: previous.content.map((item) => (item.id === id ? { ...item, status: nextStatus } : item)),
+      });
+    }
+    return { queryKey: candidatesQueryKey, previous };
+  };
+
   const activateMutation = useMutation({
     mutationFn: (id: string) => api.candidates.activate(accessToken, id, effectiveEstId),
-    onSuccess: invalidateCandidatesData,
-    onError: (err) => toast({ variant: "error", title: locale === "fr" ? "Erreur" : "Error", description: (err as Error).message }),
+    onMutate: (id: string) => optimisticallySetStatus(id, "ACTIVE"),
+    onError: (err, _id, context) => {
+      if (context?.previous) queryClient.setQueryData(context.queryKey, context.previous);
+      toast({ variant: "error", title: locale === "fr" ? "Erreur" : "Error", description: (err as Error).message });
+    },
+    onSettled: invalidateCandidatesData,
   });
 
   const deactivateMutation = useMutation({
     mutationFn: (id: string) => api.candidates.deactivate(accessToken, id, effectiveEstId),
-    onSuccess: invalidateCandidatesData,
-    onError: (err) => toast({ variant: "error", title: locale === "fr" ? "Erreur" : "Error", description: (err as Error).message }),
+    onMutate: (id: string) => optimisticallySetStatus(id, "ARCHIVED"),
+    onError: (err, _id, context) => {
+      if (context?.previous) queryClient.setQueryData(context.queryKey, context.previous);
+      toast({ variant: "error", title: locale === "fr" ? "Erreur" : "Error", description: (err as Error).message });
+    },
+    onSettled: invalidateCandidatesData,
   });
 
   const exportMutation = useMutation({

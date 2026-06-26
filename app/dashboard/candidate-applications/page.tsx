@@ -25,8 +25,11 @@ import type {
   CandidateApplicationResponse,
   CandidateApplicationStatus,
   FunnelStageType,
+  PagedResponse,
   PipelineViewType,
 } from "@/lib/types";
+
+type PagedResponseLike = PagedResponse<CandidateApplicationResponse>;
 
 const PAGE_SIZE = 10;
 
@@ -107,8 +110,10 @@ export default function CandidateApplicationsPage() {
   // Kanban et Liste ont besoin de l'ensemble des candidatures filtrees pour regrouper par
   // etape de funnel ; seule la vue Tableau est reellement paginee. On charge donc une page
   // large (plafonnee) plutot que de paginer ici. Voir api/docs/data-loading-optimization/01-PLAN.md.
+  const applicationsQueryKey = ["candidate-applications", "list", accessToken, effectiveEstId] as const;
+
   const query = useQuery({
-    queryKey: ["candidate-applications", "list", accessToken, effectiveEstId],
+    queryKey: applicationsQueryKey,
     queryFn: () => api.candidateApplications.listPaged(accessToken, effectiveEstId, { size: 500 }),
     enabled: Boolean(accessToken && effectiveEstId && canAccess),
   });
@@ -383,6 +388,23 @@ export default function CandidateApplicationsPage() {
         toStageId: transitionToStageId,
         note: transitionNote.trim(),
       }),
+    // Deplace immediatement la candidature vers la nouvelle etape dans le cache (Kanban/Liste/
+    // Tableau partagent tous la meme requete `query`), pour que le drag&drop semble instantane ;
+    // restaure l'etape precedente si la transition est rejetee par le backend.
+    onMutate: () => {
+      const targetId = transitionTarget?.id;
+      const nextStageId = transitionToStageId;
+      const previous = queryClient.getQueryData<PagedResponseLike>(applicationsQueryKey);
+      if (targetId && previous) {
+        queryClient.setQueryData<PagedResponseLike>(applicationsQueryKey, {
+          ...previous,
+          content: previous.content.map((item) =>
+            item.id === targetId ? { ...item, currentStageId: nextStageId } : item,
+          ),
+        });
+      }
+      return { previous };
+    },
     onSuccess: () => {
       invalidateApplicationsData();
       setTransitionTarget(null);
@@ -391,7 +413,10 @@ export default function CandidateApplicationsPage() {
       setTransitionError(null);
       toast({ variant: "success", title: locale === "fr" ? "Transition effectuée" : "Transition completed" });
     },
-    onError: (err) => setTransitionError((err as Error).message),
+    onError: (err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(applicationsQueryKey, context.previous);
+      setTransitionError((err as Error).message);
+    },
   });
 
   const t = {
