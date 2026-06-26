@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import {
   Contact,
@@ -242,6 +242,7 @@ function buildMappedFile(rows: string[][], mapping: Record<ImportFieldKey, strin
 
 export default function CandidatesPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { accessToken, locale, loadTokensFromStorage, setActiveTab } = useDashboardStore();
   const [isHydrated, setIsHydrated] = useState(false);
 
@@ -425,24 +426,31 @@ export default function CandidatesPage() {
     setSelectedIds(new Set());
   }, [effectiveEstId, page]);
 
+  // Invalide toutes les pages/filtres de la liste candidates ainsi que le KPI de performance
+  // operateur du dashboard admin/super-admin, qui depend du meme jeu de donnees.
+  const invalidateCandidatesData = () => {
+    void queryClient.invalidateQueries({ queryKey: ["candidates"] });
+    void queryClient.invalidateQueries({ queryKey: ["pipeline-overview-operator-performance"] });
+  };
+
   const createMutation = useMutation({
     mutationFn: (payload: CreateCandidateRequest) => api.candidates.create(accessToken, payload),
-    onSuccess: async () => { await query.refetch(); setDialogOpen(false); setFormError(null); },
+    onSuccess: () => { invalidateCandidatesData(); setDialogOpen(false); setFormError(null); },
     onError: (err) => setFormError((err as Error).message),
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: UpdateCandidateRequest }) =>
       api.candidates.update(accessToken, id, effectiveEstId, payload),
-    onSuccess: async () => { await query.refetch(); setDialogOpen(false); setFormError(null); },
+    onSuccess: () => { invalidateCandidatesData(); setDialogOpen(false); setFormError(null); },
     onError: (err) => setFormError((err as Error).message),
   });
 
   const assignOperatorMutation = useMutation({
     mutationFn: ({ id, assignedOperatorId }: { id: string; assignedOperatorId: string }) =>
       api.candidates.update(accessToken, id, effectiveEstId, { assignedOperatorId }),
-    onSuccess: async () => {
-      await query.refetch();
+    onSuccess: () => {
+      invalidateCandidatesData();
       toast({ variant: "success", title: locale === "fr" ? "Opérateur affecté" : "Operator assigned" });
       setAssignOperatorDialogOpen(false);
       setAssignOperatorTarget(null);
@@ -453,25 +461,25 @@ export default function CandidatesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.candidates.delete(accessToken, id, effectiveEstId),
-    onSuccess: async () => { await query.refetch(); setDeleteTarget(null); setDeleteMode("soft"); },
+    onSuccess: () => { invalidateCandidatesData(); setDeleteTarget(null); setDeleteMode("soft"); },
     onError: (err) => toast({ variant: "error", title: locale === "fr" ? "Erreur" : "Error", description: (err as Error).message }),
   });
 
   const hardDeleteMutation = useMutation({
     mutationFn: (id: string) => api.candidates.hardDelete(accessToken, id, effectiveEstId),
-    onSuccess: async () => { await query.refetch(); setDeleteTarget(null); setDeleteMode("soft"); },
+    onSuccess: () => { invalidateCandidatesData(); setDeleteTarget(null); setDeleteMode("soft"); },
     onError: (err) => toast({ variant: "error", title: locale === "fr" ? "Erreur" : "Error", description: (err as Error).message }),
   });
 
   const activateMutation = useMutation({
     mutationFn: (id: string) => api.candidates.activate(accessToken, id, effectiveEstId),
-    onSuccess: () => query.refetch(),
+    onSuccess: invalidateCandidatesData,
     onError: (err) => toast({ variant: "error", title: locale === "fr" ? "Erreur" : "Error", description: (err as Error).message }),
   });
 
   const deactivateMutation = useMutation({
     mutationFn: (id: string) => api.candidates.deactivate(accessToken, id, effectiveEstId),
-    onSuccess: () => query.refetch(),
+    onSuccess: invalidateCandidatesData,
     onError: (err) => toast({ variant: "error", title: locale === "fr" ? "Erreur" : "Error", description: (err as Error).message }),
   });
 
@@ -494,8 +502,8 @@ export default function CandidatesPage() {
 
   const importMutation = useMutation({
     mutationFn: (file: File) => api.candidates.importExcel(accessToken, effectiveEstId, file),
-    onSuccess: async (result: CandidateImportResultResponse) => {
-      await query.refetch();
+    onSuccess: (result: CandidateImportResultResponse) => {
+      invalidateCandidatesData();
       setImportErrors(result.errors ?? []);
       toast({
         variant: result.failed > 0 ? "error" : "success",

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, ClipboardList, Eye, Filter, History, LayoutGrid, List, PlusCircle, RefreshCcw, Table as TableIcon, Workflow } from "lucide-react";
 import { api } from "@/lib/api";
 import { useDashboardStore } from "@/store/dashboard-store";
@@ -32,6 +32,7 @@ const PAGE_SIZE = 10;
 
 export default function CandidateApplicationsPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { accessToken, locale, loadTokensFromStorage, setActiveTab } = useDashboardStore();
   const [isHydrated, setIsHydrated] = useState(false);
 
@@ -342,14 +343,24 @@ export default function CandidateApplicationsPage() {
       }));
   }, [newApplicationEligibleLevelsQuery.data, newApplicationCandidateApplicationsQuery.data]);
 
+  // Invalide la liste des candidatures (toutes vues/etablissements), les listes de candidatures
+  // par candidat utilisees dans le dialogue de creation, et le KPI de performance operateur du
+  // dashboard, qui depend du meme jeu de donnees.
+  const invalidateApplicationsData = () => {
+    void queryClient.invalidateQueries({ queryKey: ["candidate-applications"] });
+    void queryClient.invalidateQueries({ queryKey: ["candidate", "applications"] });
+    void queryClient.invalidateQueries({ queryKey: ["pipeline-overview-applications"] });
+    void queryClient.invalidateQueries({ queryKey: ["pipeline-overview-operator-performance"] });
+  };
+
   const createMutation = useMutation({
     mutationFn: () =>
       api.candidateApplications.create(accessToken, newCandidateId, {
         establishmentId: effectiveEstId,
         programTrackLevelId: newProgramTrackLevelId,
       }),
-    onSuccess: async () => {
-      await query.refetch();
+    onSuccess: () => {
+      invalidateApplicationsData();
       setShowNewApplication(false);
       setNewCandidateId("");
       setNewProgramTrackLevelId("");
@@ -372,8 +383,8 @@ export default function CandidateApplicationsPage() {
         toStageId: transitionToStageId,
         note: transitionNote.trim(),
       }),
-    onSuccess: async () => {
-      await query.refetch();
+    onSuccess: () => {
+      invalidateApplicationsData();
       setTransitionTarget(null);
       setTransitionToStageId("");
       setTransitionNote("");
