@@ -5,14 +5,13 @@ import com.aerixa.app.application.configuration.dto.AcquisitionChannelResponse;
 import com.aerixa.app.application.configuration.dto.CreateAcquisitionChannelRequest;
 import com.aerixa.app.application.configuration.dto.UpdateAcquisitionChannelRequest;
 import com.aerixa.app.application.configuration.security.ConfigurationPermissionGuard;
+import com.aerixa.app.application.configuration.security.EstablishmentAccessGuard;
 import com.aerixa.app.domain.auth.entity.Role;
 import com.aerixa.app.domain.auth.entity.User;
 import com.aerixa.app.domain.auth.repository.UserRepository;
 import com.aerixa.app.domain.configuration.entity.AcquisitionChannel;
 import com.aerixa.app.domain.configuration.entity.AcquisitionChannelType;
-import com.aerixa.app.domain.configuration.entity.Establishment;
 import com.aerixa.app.infrastructure.configuration.repository.AcquisitionChannelJpaRepository;
-import com.aerixa.app.infrastructure.configuration.repository.EstablishmentJpaRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -39,13 +38,13 @@ class AcquisitionChannelServiceTest {
     private AcquisitionChannelJpaRepository acquisitionChannelJpaRepository;
 
     @Mock
-    private EstablishmentJpaRepository establishmentJpaRepository;
-
-    @Mock
     private UserRepository userRepository;
 
     @Mock
     private ConfigurationPermissionGuard permissionGuard;
+
+    @Mock
+    private EstablishmentAccessGuard establishmentAccessGuard;
 
     @Mock
     private ConfigurationAuditPublisher auditPublisher;
@@ -98,9 +97,6 @@ class AcquisitionChannelServiceTest {
 
         when(userRepository.findById(admin.getId())).thenReturn(Optional.of(admin));
         doNothing().when(permissionGuard).assertHasPermission(any(User.class), anyString());
-        when(establishmentJpaRepository.findById(establishmentId)).thenReturn(Optional.of(
-                Establishment.builder().id(establishmentId).createdByUserId(admin.getId()).code("EST").name("Est").build()
-        ));
         when(acquisitionChannelJpaRepository.existsByEstablishmentIdAndCodeIgnoreCase(establishmentId, "WEB")).thenReturn(false);
         when(acquisitionChannelJpaRepository.save(any(AcquisitionChannel.class))).thenReturn(saved);
 
@@ -123,9 +119,6 @@ class AcquisitionChannelServiceTest {
 
         when(userRepository.findById(admin.getId())).thenReturn(Optional.of(admin));
         doNothing().when(permissionGuard).assertHasPermission(any(User.class), anyString());
-        when(establishmentJpaRepository.findById(establishmentId)).thenReturn(Optional.of(
-                Establishment.builder().id(establishmentId).createdByUserId(admin.getId()).code("EST").name("Est").build()
-        ));
         when(acquisitionChannelJpaRepository.findAllByEstablishmentId(any(UUID.class), any(org.springframework.data.domain.Sort.class)))
                 .thenReturn(List.of(channel));
 
@@ -153,9 +146,6 @@ class AcquisitionChannelServiceTest {
 
         when(userRepository.findById(admin.getId())).thenReturn(Optional.of(admin));
         doNothing().when(permissionGuard).assertHasPermission(any(User.class), anyString());
-        when(establishmentJpaRepository.findById(establishmentId)).thenReturn(Optional.of(
-                Establishment.builder().id(establishmentId).createdByUserId(admin.getId()).code("EST").name("Est").build()
-        ));
         when(acquisitionChannelJpaRepository.findByIdAndEstablishmentId(channelId, establishmentId)).thenReturn(Optional.of(channel));
         when(acquisitionChannelJpaRepository.save(any(AcquisitionChannel.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
