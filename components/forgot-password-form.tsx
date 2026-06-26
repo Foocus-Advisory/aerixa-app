@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -10,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export function ForgotPasswordForm() {
-  const { locale } = useDashboardStore();
+  const { locale, theme } = useDashboardStore();
   const t = dictionaries[locale];
   const [email, setEmail] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -23,7 +24,15 @@ export function ForgotPasswordForm() {
 
   return (
     <div className="space-y-4">
-      <div className="space-y-1 text-center">
+      <div className="space-y-2 text-center">
+        <Image
+          src={theme === "dark" ? "/img/logo-white.png" : "/img/logo-black.png"}
+          alt="AERIXA"
+          width={96}
+          height={96}
+          className="mx-auto h-24 w-24 object-contain"
+          priority
+        />
         <h2 className="text-[1.4rem] font-semibold tracking-tight">{t.authForgotTitle}</h2>
         <p className="text-sm text-muted-foreground">{t.authForgotSubtitle}</p>
       </div>

@@ -19,6 +19,12 @@ export const TAB_TO_PATH: Record<TabKey, string> = {
   "config-acquisition-channels": "/dashboard/acquisition-channels",
   "config-funnel-stages": "/dashboard/funnel-stages",
   "config-funnel-stage-transitions": "/dashboard/funnel-stage-transitions",
+  candidates: "/dashboard/candidates",
+  "candidate-applications": "/dashboard/candidate-applications",
+  "candidate-conversations": "/dashboard/candidate-conversations",
+  "guides-whatsapp-configuration": "/dashboard/guides/whatsapp-configuration",
+  "guides-candidates-usage": "/dashboard/guides/candidates-usage",
+  "guides-configuration": "/dashboard/guides/configuration",
 };
 
 const SLUG_TO_TAB: Record<string, TabKey> = {
@@ -39,6 +45,12 @@ const SLUG_TO_TAB: Record<string, TabKey> = {
   "acquisition-channels": "config-acquisition-channels",
   "funnel-stages": "config-funnel-stages",
   "funnel-stage-transitions": "config-funnel-stage-transitions",
+  candidates: "candidates",
+  "candidate-applications": "candidate-applications",
+  "candidate-conversations": "candidate-conversations",
+  "guides/whatsapp-configuration": "guides-whatsapp-configuration",
+  "guides/candidates-usage": "guides-candidates-usage",
+  "guides/configuration": "guides-configuration",
 };
 
 export function slugToTab(slug: string[]): TabKey | null {

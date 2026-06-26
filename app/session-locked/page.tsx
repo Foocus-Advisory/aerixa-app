@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -18,7 +19,7 @@ import { Lock } from "lucide-react";
 
 export default function SessionLockedPage() {
   const router = useRouter();
-  const { userEmail, locale, sessionLocked, accessToken, preLockPath, unlockSession, setTokens, setUserEmail, setUnlockingInProgress } = useDashboardStore();
+  const { userEmail, locale, theme, sessionLocked, accessToken, preLockPath, unlockSession, setTokens, setUserEmail, setUnlockingInProgress } = useDashboardStore();
   const { toast } = useToast();
   const t = dictionaries[locale];
   const [password, setPassword] = useState("");
@@ -97,8 +98,20 @@ export default function SessionLockedPage() {
         {/* Contrôles thème et langue */}
         <AuthControls />
 
+        {/* Logo */}
+        <div className="flex justify-center mt-4">
+          <Image
+            src={theme === "dark" ? "/img/logo-white.png" : "/img/logo-black.png"}
+            alt="AERIXA"
+            width={96}
+            height={96}
+            className="h-24 w-24 object-contain"
+            priority
+          />
+        </div>
+
         {/* Icon */}
-        <div className="flex justify-center mt-4 mb-6">
+        <div className="flex justify-center mb-6">
           <div className="rounded-full bg-primary/10 p-4">
             <Lock className="h-8 w-8 text-primary" />
           </div>

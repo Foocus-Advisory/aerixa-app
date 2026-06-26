@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
@@ -16,7 +17,7 @@ import { useToast } from "@/components/ui/toast-provider";
 
 export function LoginForm() {
   const router = useRouter();
-  const { locale, setTokens } = useDashboardStore();
+  const { locale, theme, setTokens } = useDashboardStore();
   const { toast } = useToast();
   const t = dictionaries[locale];
   const [email, setEmail] = useState("");
@@ -58,7 +59,14 @@ export function LoginForm() {
   return (
     <div className="space-y-4">
       <div className="space-y-2 text-center">
-        <div className="mx-auto h-10 w-10 rounded-sm bg-primary/20" />
+        <Image
+          src={theme === "dark" ? "/img/logo-white.png" : "/img/logo-black.png"}
+          alt="AERIXA"
+          width={96}
+          height={96}
+          className="mx-auto h-24 w-24 object-contain"
+          priority
+        />
         <h2 className="text-[1.75rem] font-semibold tracking-tight">{t.authLoginTitle}</h2>
         <p className="text-sm text-muted-foreground">{t.authLoginSubtitle}</p>
       </div>

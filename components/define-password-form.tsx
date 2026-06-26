@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
@@ -16,7 +17,7 @@ interface DefinePasswordFormProps {
 
 export function DefinePasswordForm({ initialToken = "" }: DefinePasswordFormProps) {
   const router = useRouter();
-  const { locale } = useDashboardStore();
+  const { locale, theme } = useDashboardStore();
   const t = dictionaries[locale];
 
   const [password, setPassword] = useState("");
@@ -43,7 +44,15 @@ export function DefinePasswordForm({ initialToken = "" }: DefinePasswordFormProp
 
   return (
     <div className="space-y-4">
-      <div className="space-y-1 text-center">
+      <div className="space-y-2 text-center">
+        <Image
+          src={theme === "dark" ? "/img/logo-white.png" : "/img/logo-black.png"}
+          alt="AERIXA"
+          width={96}
+          height={96}
+          className="mx-auto h-24 w-24 object-contain"
+          priority
+        />
         <h2 className="text-[1.4rem] font-semibold tracking-tight">{t.authDefineTitle}</h2>
         <p className="text-sm text-muted-foreground">{t.authDefineSubtitle}</p>
       </div>

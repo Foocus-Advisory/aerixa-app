@@ -25,6 +25,12 @@ import {
   Megaphone,
   GitBranch,
   Filter,
+  Contact,
+  ClipboardList,
+  MessageCircle,
+  MoreHorizontal,
+  Check,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,7 +42,7 @@ import { tabToPath } from "@/lib/dashboard-routes";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { useDashboardStore } from "@/store/dashboard-store";
 
-type SidebarItem = {
+export type SidebarItem = {
   id: string;
   label: string;
   icon: ComponentType<{ className?: string }>;
@@ -44,7 +50,7 @@ type SidebarItem = {
   subItems: Array<{ id: string; label: string; tab: string; icon?: ComponentType<{ className?: string }> }>;
 };
 
-const menusByLocale = {
+export const menusByLocale = {
   fr: [
     {
       id: "dashboard",
@@ -102,6 +108,26 @@ const menusByLocale = {
         { id: "config-acquisition-channels", label: "Canaux d'acquisition", tab: "config-acquisition-channels", icon: Megaphone },
         { id: "config-funnel-stages", label: "Etapes du funnel", tab: "config-funnel-stages", icon: Filter },
         { id: "config-funnel-stage-transitions", label: "Transitions du funnel", tab: "config-funnel-stage-transitions", icon: GitBranch },
+      ],
+    },
+    {
+      id: "candidates",
+      label: "Candidats",
+      icon: Contact,
+      subItems: [
+        { id: "candidates-list", label: "Candidats", tab: "candidates", icon: Contact },
+        { id: "candidates-applications", label: "Candidatures", tab: "candidate-applications", icon: ClipboardList },
+        { id: "candidates-conversations", label: "Conversations WhatsApp", tab: "candidate-conversations", icon: MessageCircle },
+      ],
+    },
+    {
+      id: "guides",
+      label: "Guides",
+      icon: BookOpen,
+      subItems: [
+        { id: "guides-configuration", label: "Guide de configuration", tab: "guides-configuration", icon: Settings },
+        { id: "guides-whatsapp-configuration", label: "Guide configuration WhatsApp", tab: "guides-whatsapp-configuration", icon: MessageCircle },
+        { id: "guides-candidates-usage", label: "Guide utilisation candidats", tab: "guides-candidates-usage", icon: Contact },
       ],
     },
   ] satisfies SidebarItem[],
@@ -164,6 +190,26 @@ const menusByLocale = {
           { id: "config-funnel-stage-transitions", label: "Funnel transitions", tab: "config-funnel-stage-transitions", icon: GitBranch },
         ],
       },
+      {
+        id: "candidates",
+        label: "Candidates",
+        icon: Contact,
+        subItems: [
+          { id: "candidates-list", label: "Candidates", tab: "candidates", icon: Contact },
+          { id: "candidates-applications", label: "Applications", tab: "candidate-applications", icon: ClipboardList },
+          { id: "candidates-conversations", label: "WhatsApp conversations", tab: "candidate-conversations", icon: MessageCircle },
+        ],
+      },
+      {
+        id: "guides",
+        label: "Guides",
+        icon: BookOpen,
+        subItems: [
+          { id: "guides-configuration", label: "Configuration guide", tab: "guides-configuration", icon: Settings },
+          { id: "guides-whatsapp-configuration", label: "WhatsApp configuration guide", tab: "guides-whatsapp-configuration", icon: MessageCircle },
+          { id: "guides-candidates-usage", label: "Candidates usage guide", tab: "guides-candidates-usage", icon: Contact },
+        ],
+      },
     ] satisfies SidebarItem[],
 } as const;
 
@@ -172,6 +218,7 @@ export function AppSidebar() {
   const { locale, theme, activeTab, clearTokens, accessToken } = useDashboardStore();
   const [hovered, setHovered] = useState<string | null>(null);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [mobileOverflowOpen, setMobileOverflowOpen] = useState(false);
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const items = menusByLocale[locale];
@@ -184,10 +231,17 @@ export function AppSidebar() {
   });
 
   const permissionSet = useMemo(() => buildPermissionSet(currentUserQuery.data ?? null), [currentUserQuery.data]);
+  const normalizedRoles = useMemo(
+    () => (currentUserQuery.data?.roles ?? []).map((role) => role.replace(/^ROLE_/, "").toUpperCase()),
+    [currentUserQuery.data?.roles],
+  );
+  const isSuperAdmin = normalizedRoles.includes("SUPER_ADMIN");
+  const isOperator = normalizedRoles.includes("OPERATOR");
 
   const filteredItems = useMemo(
     () =>
       items
+        .filter((item) => !((isSuperAdmin || isOperator) && item.id === "config-establishment"))
         .map((item) => {
           const nextSubItems = item.subItems.filter((subItem) => canAccessTab(permissionSet, subItem.tab as TabKey));
           const canOpenRootTab = item.tab ? canAccessTab(permissionSet, item.tab as TabKey) : false;
@@ -201,7 +255,7 @@ export function AppSidebar() {
           };
         })
         .filter(Boolean) as SidebarItem[],
-    [items, permissionSet],
+    [items, permissionSet, isSuperAdmin, isOperator],
   );
 
   const openMenu = (id: string) => {
@@ -229,7 +283,21 @@ export function AppSidebar() {
     [activeTab, filteredItems],
   );
 
+  const MOBILE_PRIMARY_COUNT = 3;
+  const primaryMobileItems = filteredItems.slice(0, MOBILE_PRIMARY_COUNT);
+  const overflowMobileItems = filteredItems.slice(MOBILE_PRIMARY_COUNT);
+  const isOverflowActive = overflowMobileItems.some((item) => item.id === activeGroup?.id);
+
+  const navigateToItem = (item: SidebarItem) => {
+    if (item.subItems.length === 0) {
+      if (item.tab) router.push(tabToPath(item.tab as TabKey));
+      return;
+    }
+    router.push(tabToPath(item.subItems[0].tab as TabKey));
+  };
+
   return (
+    <>
     <aside className="fixed left-0 top-0 z-40 hidden h-screen w-18.5 border-r border-border/60 bg-sidebar/90 md:flex md:flex-col md:items-center md:gap-4 md:py-4">
       <Image
         src={theme === "dark" ? "/img/min-logo-dark.png" : "/img/min-logo-light.png"}
@@ -349,5 +417,102 @@ export function AppSidebar() {
         </DialogContent>
       </Dialog>
     </aside>
+
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 px-2 pt-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] shadow-[0_-8px_24px_-12px_rgba(0,0,0,0.35)] backdrop-blur md:hidden">
+      <div
+        className="grid gap-2"
+        style={{ gridTemplateColumns: `repeat(${Math.max(primaryMobileItems.length + (overflowMobileItems.length > 0 ? 1 : 0) + 1, 1)}, minmax(0, 1fr))` }}
+      >
+        {primaryMobileItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = activeGroup?.id === item.id;
+          return (
+            <AppTooltip key={item.id} content={item.label} side="top">
+              <Button
+                variant={isActive ? "default" : "ghost"}
+                size="sm"
+                className="h-12 flex-col gap-1 rounded-2xl"
+                onClick={() => navigateToItem(item)}
+              >
+                <Icon className="h-4 w-4" />
+                <span className="text-[11px]">{item.label}</span>
+              </Button>
+            </AppTooltip>
+          );
+        })}
+
+        {overflowMobileItems.length > 0 ? (
+          <AppTooltip content={locale === "fr" ? "Plus" : "More"} side="top">
+            <Button
+              variant={mobileOverflowOpen || isOverflowActive ? "default" : "ghost"}
+              size="sm"
+              className="h-12 flex-col gap-1 rounded-2xl"
+              onClick={() => setMobileOverflowOpen((current) => !current)}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+              <span className="text-[11px]">{locale === "fr" ? "Plus" : "More"}</span>
+            </Button>
+          </AppTooltip>
+        ) : null}
+
+        <AppTooltip content={locale === "fr" ? "Deconnexion" : "Logout"} side="top">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-12 flex-col gap-1 rounded-2xl"
+            onClick={() => setLogoutConfirmOpen(true)}
+          >
+            <LogOut className="h-4 w-4" />
+            <span className="text-[11px]">{locale === "fr" ? "Logout" : "Logout"}</span>
+          </Button>
+        </AppTooltip>
+      </div>
+    </nav>
+
+    {mobileOverflowOpen && overflowMobileItems.length > 0 ? (
+      <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
+        <button
+          type="button"
+          className="absolute inset-0 bg-black/40"
+          aria-label={locale === "fr" ? "Fermer le menu" : "Close menu"}
+          onClick={() => setMobileOverflowOpen(false)}
+        />
+        <aside className="absolute right-0 top-0 h-full w-[84vw] max-w-sm border-l border-border bg-background p-4 shadow-2xl">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              {locale === "fr" ? "Navigation" : "Navigation"}
+            </h3>
+            <Button variant="ghost" size="sm" className="h-8 w-8 rounded-full p-0" onClick={() => setMobileOverflowOpen(false)}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <div className="space-y-2 overflow-y-auto pb-6">
+            {overflowMobileItems.map((group) => {
+              const GroupIcon = group.icon;
+              const isGroupActive = activeGroup?.id === group.id;
+              return (
+                <button
+                  key={group.id}
+                  type="button"
+                  className="flex w-full items-center justify-between gap-2 rounded-2xl border border-border/70 bg-card/60 p-3 text-left"
+                  onClick={() => {
+                    setMobileOverflowOpen(false);
+                    navigateToItem(group);
+                  }}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <GroupIcon className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-semibold">{group.label}</span>
+                  </span>
+                  {isGroupActive ? <Check className="h-4 w-4 text-primary" /> : null}
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+      </div>
+    ) : null}
+    </>
   );
 }

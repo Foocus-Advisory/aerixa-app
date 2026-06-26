@@ -11,6 +11,9 @@ export type AppPermission =
   | "users:delete"
   | "users:reset_password"
   | "users:assign_parent"
+  | "operator_establishment_assignments:manage"
+  | "candidates:assign_operator"
+  | "candidates:read_operator_performance"
   | "sessions:read_own"
   | "sessions:revoke_own"
   | "sessions:revoke_others"
@@ -105,7 +108,36 @@ export type AppPermission =
   | "funnel_stage_transitions:activate"
   | "funnel_stage_transitions:deactivate"
   | "pipeline_view_preference:read"
-  | "pipeline_view_preference:update";
+  | "pipeline_view_preference:update"
+  | "establishment_whatsapp_config:read"
+  | "establishment_whatsapp_config:update"
+  | "candidates:create"
+  | "candidates:read"
+  | "candidates:list"
+  | "candidates:update"
+  | "candidates:delete"
+  | "candidates:hard_delete"
+  | "candidates:activate"
+  | "candidates:deactivate"
+  | "candidates:export"
+  | "candidates:import"
+  | "candidate_applications:create"
+  | "candidate_applications:read"
+  | "candidate_applications:list"
+  | "candidate_applications:transition"
+  | "candidate_applications:history"
+  | "candidate_notes:create"
+  | "candidate_notes:list"
+  | "candidate_notes:update"
+  | "candidate_notes:delete"
+  | "candidate_attachments:create"
+  | "candidate_attachments:read"
+  | "candidate_attachments:delete"
+  | "candidate_application_audit:read"
+  | "candidate_conversations:read"
+  | "candidate_conversations:list"
+  | "candidate_conversations:send_message"
+  | "candidate_conversations:create";
 
 const ROLE_FALLBACK_PERMISSIONS: Record<string, AppPermission[]> = {
   SUPER_ADMIN: [
@@ -119,6 +151,7 @@ const ROLE_FALLBACK_PERMISSIONS: Record<string, AppPermission[]> = {
     "users:hard_delete",
     "users:reset_password",
     "users:assign_parent",
+    "operator_establishment_assignments:manage",
     "sessions:read_own",
     "sessions:revoke_own",
     "sessions:revoke_others",
@@ -214,6 +247,37 @@ const ROLE_FALLBACK_PERMISSIONS: Record<string, AppPermission[]> = {
     "funnel_stage_transitions:deactivate",
     "pipeline_view_preference:read",
     "pipeline_view_preference:update",
+    "establishment_whatsapp_config:read",
+    "establishment_whatsapp_config:update",
+    "candidates:create",
+    "candidates:read",
+    "candidates:list",
+    "candidates:update",
+    "candidates:delete",
+    "candidates:hard_delete",
+    "candidates:activate",
+    "candidates:deactivate",
+    "candidates:export",
+    "candidates:import",
+    "candidates:assign_operator",
+    "candidates:read_operator_performance",
+    "candidate_applications:create",
+    "candidate_applications:read",
+    "candidate_applications:list",
+    "candidate_applications:transition",
+    "candidate_applications:history",
+    "candidate_notes:create",
+    "candidate_notes:list",
+    "candidate_notes:update",
+    "candidate_notes:delete",
+    "candidate_attachments:create",
+    "candidate_attachments:read",
+    "candidate_attachments:delete",
+    "candidate_application_audit:read",
+    "candidate_conversations:read",
+    "candidate_conversations:list",
+    "candidate_conversations:send_message",
+    "candidate_conversations:create",
   ],
   ADMIN: [
     "users:read_children",
@@ -223,24 +287,16 @@ const ROLE_FALLBACK_PERMISSIONS: Record<string, AppPermission[]> = {
     "users:revoke_sessions",
     "users:delete",
     "users:reset_password",
+    "operator_establishment_assignments:manage",
     "sessions:read_own",
     "sessions:revoke_own",
     "sessions:revoke_others",
-    "roles:read",
-    "roles:manage_permissions",
-    "permissions:read",
     "sessions:read_children",
     "sessions:revoke",
     "audit_logs:read",
-    "email_templates:read",
-    "email_templates:create",
-    "email_templates:edit",
-    "email_templates:delete",
-    "email_templates:test",
     "notifications:read",
     "notifications:edit",
     "notifications:delete",
-    "business_configuration:access",
     "establishments:create",
     "establishments:read",
     "establishments:list",
@@ -317,6 +373,37 @@ const ROLE_FALLBACK_PERMISSIONS: Record<string, AppPermission[]> = {
     "funnel_stage_transitions:deactivate",
     "pipeline_view_preference:read",
     "pipeline_view_preference:update",
+    "establishment_whatsapp_config:read",
+    "establishment_whatsapp_config:update",
+    "candidates:create",
+    "candidates:read",
+    "candidates:list",
+    "candidates:update",
+    "candidates:delete",
+    "candidates:hard_delete",
+    "candidates:activate",
+    "candidates:deactivate",
+    "candidates:export",
+    "candidates:import",
+    "candidates:assign_operator",
+    "candidates:read_operator_performance",
+    "candidate_applications:create",
+    "candidate_applications:read",
+    "candidate_applications:list",
+    "candidate_applications:transition",
+    "candidate_applications:history",
+    "candidate_notes:create",
+    "candidate_notes:list",
+    "candidate_notes:update",
+    "candidate_notes:delete",
+    "candidate_attachments:create",
+    "candidate_attachments:read",
+    "candidate_attachments:delete",
+    "candidate_application_audit:read",
+    "candidate_conversations:read",
+    "candidate_conversations:list",
+    "candidate_conversations:send_message",
+    "candidate_conversations:create",
   ],
   OPERATOR: [
     "sessions:read_own",
@@ -324,7 +411,50 @@ const ROLE_FALLBACK_PERMISSIONS: Record<string, AppPermission[]> = {
     "sessions:revoke_others",
     "notifications:read",
     "notifications:edit",
-    "email_templates:read",
+    "establishments:read",
+    "establishments:list",
+    "acquisition_channels:list",
+    "acquisition_channels:read",
+    "entry_diplomas:list",
+    "entry_diplomas:read",
+    "program_tracks:list",
+    "program_tracks:read",
+    "academic_levels:list",
+    "academic_levels:read",
+    "program_track_levels:list",
+    "program_track_levels:read",
+    "funnel_stages:list",
+    "funnel_stages:read",
+    "funnel_stage_transitions:list",
+    "funnel_stage_transitions:read",
+    "pipeline_view_preference:read",
+    "pipeline_view_preference:update",
+    "candidates:create",
+    "candidates:read",
+    "candidates:list",
+    "candidates:update",
+    "candidates:delete",
+    "candidates:activate",
+    "candidates:deactivate",
+    "candidates:export",
+    "candidates:import",
+    "candidate_applications:create",
+    "candidate_applications:read",
+    "candidate_applications:list",
+    "candidate_applications:transition",
+    "candidate_applications:history",
+    "candidate_application_audit:read",
+    "candidate_notes:create",
+    "candidate_notes:list",
+    "candidate_notes:update",
+    "candidate_notes:delete",
+    "candidate_attachments:create",
+    "candidate_attachments:read",
+    "candidate_attachments:delete",
+    "candidate_conversations:read",
+    "candidate_conversations:list",
+    "candidate_conversations:send_message",
+    "candidate_conversations:create",
   ],
 };
 
@@ -346,7 +476,13 @@ export type TabKey =
   | "config-program-track-levels"
   | "config-acquisition-channels"
   | "config-funnel-stages"
-  | "config-funnel-stage-transitions";
+  | "config-funnel-stage-transitions"
+  | "candidates"
+  | "candidate-applications"
+  | "candidate-conversations"
+  | "guides-whatsapp-configuration"
+  | "guides-candidates-usage"
+  | "guides-configuration";
 
 const TAB_PERMISSIONS: Partial<Record<TabKey, AppPermission[]>> = {
   users: ["users:read_all", "users:read_children"],
@@ -356,18 +492,7 @@ const TAB_PERMISSIONS: Partial<Record<TabKey, AppPermission[]>> = {
   "mail-template": ["email_templates:read"],
   "settings-notifications": ["notifications:read"],
   "settings-audit": ["audit_logs:read"],
-  "settings-configuration": [
-    "business_configuration:access",
-    "establishments:list",
-    "entry_diplomas:list",
-    "academic_levels:list",
-    "program_tracks:list",
-    "program_track_levels:list",
-    "acquisition_channels:list",
-    "funnel_stages:list",
-    "funnel_stage_transitions:list",
-    "pipeline_view_preference:read",
-  ],
+  "settings-configuration": ["business_configuration:access"],
   "config-establishments": ["establishments:list"],
   "config-academic-levels": ["academic_levels:list"],
   "config-entry-diplomas": ["entry_diplomas:list"],
@@ -376,6 +501,9 @@ const TAB_PERMISSIONS: Partial<Record<TabKey, AppPermission[]>> = {
   "config-acquisition-channels": ["acquisition_channels:list"],
   "config-funnel-stages": ["funnel_stages:list"],
   "config-funnel-stage-transitions": ["funnel_stage_transitions:list"],
+  candidates: ["candidates:list"],
+  "candidate-applications": ["candidate_applications:list"],
+  "candidate-conversations": ["candidate_conversations:list"],
 };
 
 export function buildPermissionSet(user: Pick<UserResponse, "roles" | "permissions"> | null): Set<string> {
