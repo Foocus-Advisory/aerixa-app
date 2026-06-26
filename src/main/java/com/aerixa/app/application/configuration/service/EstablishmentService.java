@@ -10,11 +10,13 @@ import com.aerixa.app.application.configuration.dto.EstablishmentResponse;
 import com.aerixa.app.application.configuration.dto.UpdateEstablishmentRequest;
 import com.aerixa.app.application.configuration.security.ConfigurationPermissionGuard;
 import com.aerixa.app.application.configuration.security.ConfigurationPermissions;
+import com.aerixa.app.application.configuration.security.EstablishmentAccessGuard;
 import com.aerixa.app.domain.auth.entity.User;
 import com.aerixa.app.domain.auth.exception.PermissionDeniedException;
 import com.aerixa.app.domain.auth.exception.UserNotFoundException;
 import com.aerixa.app.domain.auth.repository.UserRepository;
 import com.aerixa.app.domain.configuration.entity.Establishment;
+import com.aerixa.app.infrastructure.auth.repository.OperatorEstablishmentAssignmentJpaRepository;
 import com.aerixa.app.infrastructure.configuration.repository.EstablishmentJpaRepository;
 import com.aerixa.app.infrastructure.error.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -39,17 +41,23 @@ public class EstablishmentService {
     private final UserRepository userRepository;
     private final ConfigurationPermissionGuard configurationPermissionGuard;
     private final ConfigurationAuditPublisher configurationAuditPublisher;
+    private final EstablishmentAccessGuard establishmentAccessGuard;
+    private final OperatorEstablishmentAssignmentJpaRepository operatorEstablishmentAssignmentJpaRepository;
 
     @Transactional(readOnly = true)
     public List<EstablishmentResponse> listEstablishments(UUID actorUserId, String correlationId) {
         User actor = actor(actorUserId);
         configurationPermissionGuard.assertHasPermission(actor, ConfigurationPermissions.ESTABLISHMENTS_LIST);
 
+        Sort sort = Sort.by(Sort.Direction.ASC, "name");
         List<Establishment> establishments;
         if (actor.hasRole("SUPER_ADMIN")) {
-            establishments = establishmentJpaRepository.findAll(Sort.by(Sort.Direction.ASC, "name"));
+            establishments = establishmentJpaRepository.findAll(sort);
+        } else if (actor.hasRole("OPERATOR")) {
+            List<UUID> assignedIds = operatorEstablishmentAssignmentJpaRepository.findEstablishmentIdsByOperatorUserId(actor.getId());
+            establishments = assignedIds.isEmpty() ? List.of() : establishmentJpaRepository.findAllById(assignedIds);
         } else {
-            establishments = establishmentJpaRepository.findAllByCreatedByUserId(actor.getId(), Sort.by(Sort.Direction.ASC, "name"));
+            establishments = establishmentJpaRepository.findAllByCreatedByUserId(actor.getId(), sort);
         }
 
         publishSuccess(actor.getId(), GLOBAL_SCOPE_ESTABLISHMENT_ID, ConfigurationAuditAction.LIST,
@@ -63,7 +71,7 @@ public class EstablishmentService {
         User actor = actor(actorUserId);
         configurationPermissionGuard.assertHasPermission(actor, ConfigurationPermissions.ESTABLISHMENTS_READ);
 
-        Establishment establishment = resolveScopedEstablishment(actor, establishmentId);
+        Establishment establishment = establishmentAccessGuard.assertAccess(actor, establishmentId);
         publishSuccess(actor.getId(), establishment.getId(), ConfigurationAuditAction.READ,
                 establishment.getId(), correlationId, Map.of());
 
@@ -298,7 +306,7 @@ public class EstablishmentService {
         User actor = actor(actorUserId);
         configurationPermissionGuard.assertHasPermission(actor, ConfigurationPermissions.ESTABLISHMENTS_READ);
 
-        Establishment establishment = resolveScopedEstablishment(actor, establishmentId);
+        Establishment establishment = establishmentAccessGuard.assertAccess(actor, establishmentId);
         if (!establishment.hasLogo()) {
             throw new ResourceNotFoundException("Logo etablissement introuvable");
         }

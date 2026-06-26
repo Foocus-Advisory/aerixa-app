@@ -2,6 +2,7 @@ package com.aerixa.app.infrastructure.candidates.controller;
 
 import com.aerixa.app.application.candidates.dto.CandidateNoteResponse;
 import com.aerixa.app.application.candidates.dto.CreateCandidateNoteRequest;
+import com.aerixa.app.application.candidates.dto.UpdateCandidateNoteRequest;
 import com.aerixa.app.application.candidates.service.CandidateNoteService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -13,9 +14,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -52,6 +55,31 @@ public class CandidateNotesController {
                                                              Authentication authentication,
                                                              HttpServletRequest httpRequest) {
         return ResponseEntity.ok(candidateNoteService.list(currentUserId(authentication), establishmentId, candidateId, resolveCorrelationId(httpRequest)));
+    }
+
+    @PutMapping("/{noteId}")
+    @PreAuthorize("hasAuthority('candidate_notes:update')")
+    @Operation(summary = "Modifier une note (reserve a son auteur)")
+    public ResponseEntity<CandidateNoteResponse> update(@PathVariable UUID candidateId,
+                                                         @PathVariable UUID noteId,
+                                                         @RequestParam UUID establishmentId,
+                                                         @RequestBody UpdateCandidateNoteRequest request,
+                                                         Authentication authentication,
+                                                         HttpServletRequest httpRequest) {
+        return ResponseEntity.ok(candidateNoteService.update(currentUserId(authentication), establishmentId, noteId, request,
+                resolveCorrelationId(httpRequest)));
+    }
+
+    @DeleteMapping("/{noteId}")
+    @PreAuthorize("hasAuthority('candidate_notes:delete')")
+    @Operation(summary = "Supprimer une note (auteur, admin ou super admin)")
+    public ResponseEntity<Void> delete(@PathVariable UUID candidateId,
+                                        @PathVariable UUID noteId,
+                                        @RequestParam UUID establishmentId,
+                                        Authentication authentication,
+                                        HttpServletRequest httpRequest) {
+        candidateNoteService.delete(currentUserId(authentication), establishmentId, noteId, resolveCorrelationId(httpRequest));
+        return ResponseEntity.noContent().build();
     }
 
     private UUID currentUserId(Authentication authentication) {

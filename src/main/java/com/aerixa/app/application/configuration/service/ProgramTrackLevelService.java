@@ -10,16 +10,14 @@ import com.aerixa.app.application.configuration.dto.ProgramTrackLevelResponse;
 import com.aerixa.app.application.configuration.dto.UpdateProgramTrackLevelRequest;
 import com.aerixa.app.application.configuration.security.ConfigurationPermissionGuard;
 import com.aerixa.app.application.configuration.security.ConfigurationPermissions;
+import com.aerixa.app.application.configuration.security.EstablishmentAccessGuard;
 import com.aerixa.app.domain.auth.entity.User;
-import com.aerixa.app.domain.auth.exception.PermissionDeniedException;
 import com.aerixa.app.domain.auth.exception.UserNotFoundException;
 import com.aerixa.app.domain.auth.repository.UserRepository;
 import com.aerixa.app.domain.configuration.entity.AcademicLevel;
-import com.aerixa.app.domain.configuration.entity.Establishment;
 import com.aerixa.app.domain.configuration.entity.ProgramTrack;
 import com.aerixa.app.domain.configuration.entity.ProgramTrackLevel;
 import com.aerixa.app.infrastructure.configuration.repository.AcademicLevelJpaRepository;
-import com.aerixa.app.infrastructure.configuration.repository.EstablishmentJpaRepository;
 import com.aerixa.app.infrastructure.configuration.repository.ProgramTrackJpaRepository;
 import com.aerixa.app.infrastructure.configuration.repository.ProgramTrackLevelJpaRepository;
 import com.aerixa.app.infrastructure.error.ResourceNotFoundException;
@@ -39,10 +37,10 @@ public class ProgramTrackLevelService {
     private final ProgramTrackLevelJpaRepository programTrackLevelJpaRepository;
     private final ProgramTrackJpaRepository programTrackJpaRepository;
     private final AcademicLevelJpaRepository academicLevelJpaRepository;
-    private final EstablishmentJpaRepository establishmentJpaRepository;
     private final UserRepository userRepository;
     private final ConfigurationPermissionGuard configurationPermissionGuard;
     private final ConfigurationAuditPublisher configurationAuditPublisher;
+    private final EstablishmentAccessGuard establishmentAccessGuard;
 
     @Transactional
     public ProgramTrackLevelResponse create(UUID actorUserId, CreateProgramTrackLevelRequest request, String correlationId) {
@@ -235,11 +233,7 @@ public class ProgramTrackLevelService {
     }
 
     private void assertEstablishmentAccess(User actor, UUID establishmentId) {
-        Establishment establishment = establishmentJpaRepository.findById(establishmentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Etablissement introuvable"));
-        if (!actor.hasRole("SUPER_ADMIN") && !actor.getId().equals(establishment.getCreatedByUserId())) {
-            throw new PermissionDeniedException("establishments:scope");
-        }
+        establishmentAccessGuard.assertAccess(actor, establishmentId);
     }
 
     private User actor(UUID actorUserId) {

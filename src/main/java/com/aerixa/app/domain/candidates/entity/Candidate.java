@@ -84,4 +84,7 @@ public class Candidate extends SoftDeletableEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private CandidateStatus status;
+
+    @Column(name = "assigned_operator_id")
+    private UUID assignedOperatorId;
 }

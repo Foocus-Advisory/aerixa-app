@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -21,5 +22,11 @@ public class CandidateNoteResponse {
     private CandidateNoteType type;
     private String content;
     private UUID authorUserId;
+    private String authorLabel;
     private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+    private boolean edited;
+    private boolean editableByCurrentUser;
+    private boolean deletableByCurrentUser;
+    private List<CandidateNoteAttachmentResponse> attachments;
 }

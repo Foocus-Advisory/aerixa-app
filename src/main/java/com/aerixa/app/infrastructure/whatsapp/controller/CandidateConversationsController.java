@@ -2,6 +2,7 @@ package com.aerixa.app.infrastructure.whatsapp.controller;
 
 import com.aerixa.app.application.whatsapp.dto.CandidateConversationMessageResponse;
 import com.aerixa.app.application.whatsapp.dto.CandidateConversationResponse;
+import com.aerixa.app.application.whatsapp.dto.CreateCandidateConversationRequest;
 import com.aerixa.app.application.whatsapp.dto.SendCandidateConversationMessageRequest;
 import com.aerixa.app.application.whatsapp.service.CandidateConversationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -32,6 +33,18 @@ import java.util.UUID;
 public class CandidateConversationsController {
 
     private final CandidateConversationService candidateConversationService;
+
+    @PostMapping("/api/v1/candidates/{candidateId}/conversations")
+    @PreAuthorize("hasAuthority('candidate_conversations:create')")
+    @Operation(summary = "Demarrer une conversation WhatsApp avec un candidat")
+    public ResponseEntity<CandidateConversationResponse> createForCandidate(@PathVariable UUID candidateId,
+                                                                               @RequestBody CreateCandidateConversationRequest request,
+                                                                               Authentication authentication,
+                                                                               HttpServletRequest httpRequest) {
+        UUID establishmentId = request != null ? request.getEstablishmentId() : null;
+        return ResponseEntity.status(HttpStatus.CREATED).body(candidateConversationService.createForCandidate(
+                currentUserId(authentication), establishmentId, candidateId, request, resolveCorrelationId(httpRequest)));
+    }
 
     @GetMapping("/api/v1/candidates/{candidateId}/conversations")
     @PreAuthorize("hasAuthority('candidate_conversations:list')")

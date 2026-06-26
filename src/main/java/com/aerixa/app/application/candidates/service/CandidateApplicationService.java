@@ -11,6 +11,7 @@ import com.aerixa.app.application.configuration.audit.ConfigurationAuditEvent;
 import com.aerixa.app.application.configuration.audit.ConfigurationAuditOutcome;
 import com.aerixa.app.application.configuration.audit.ConfigurationAuditPublisher;
 import com.aerixa.app.application.configuration.security.ConfigurationPermissionGuard;
+import com.aerixa.app.application.configuration.security.EstablishmentAccessGuard;
 import com.aerixa.app.application.notification.service.NotificationJobService;
 import com.aerixa.app.domain.auth.entity.User;
 import com.aerixa.app.domain.auth.exception.PermissionDeniedException;
@@ -77,6 +78,7 @@ public class CandidateApplicationService {
     private final ConfigurationPermissionGuard permissionGuard;
     private final ConfigurationAuditPublisher auditPublisher;
     private final NotificationJobService notificationJobService;
+    private final EstablishmentAccessGuard establishmentAccessGuard;
 
     @Transactional
     public CandidateApplicationResponse create(UUID actorUserId, UUID candidateId, CreateCandidateApplicationRequest request,
@@ -156,12 +158,32 @@ public class CandidateApplicationService {
         permissionGuard.assertHasPermission(actor, CandidatesPermissions.CANDIDATE_APPLICATIONS_LIST);
         assertEstablishmentAccess(actor, establishmentId);
 
-        candidateJpaRepository.findByIdAndEstablishmentId(candidateId, establishmentId)
+        Candidate candidate = candidateJpaRepository.findByIdAndEstablishmentId(candidateId, establishmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Candidat introuvable"));
+
+        if (isOperatorOnly(actor) && !actor.getId().equals(candidate.getCreatedByUserId())
+                && !actor.getId().equals(candidate.getAssignedOperatorId())) {
+            throw new PermissionDeniedException("candidates:scope");
+        }
 
         List<CandidateApplication> items = candidateApplicationJpaRepository.findAllByEstablishmentIdAndCandidateId(
                 establishmentId, candidateId, Sort.by(Sort.Direction.ASC, "createdAt"));
         publishSuccess(actor.getId(), establishmentId, ConfigurationAuditAction.LIST, candidateId, correlationId,
+                Map.of("count", items.size()));
+        return items.stream().map(this::toResponse).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<CandidateApplicationResponse> listByEstablishment(UUID actorUserId, UUID establishmentId, String correlationId) {
+        User actor = actor(actorUserId);
+        permissionGuard.assertHasPermission(actor, CandidatesPermissions.CANDIDATE_APPLICATIONS_LIST);
+        assertEstablishmentAccess(actor, establishmentId);
+
+        Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
+        List<CandidateApplication> items = isOperatorOnly(actor)
+                ? candidateApplicationJpaRepository.findVisibleToOperatorByEstablishment(establishmentId, actor.getId(), sort)
+                : candidateApplicationJpaRepository.findAllByEstablishmentId(establishmentId, sort);
+        publishSuccess(actor.getId(), establishmentId, ConfigurationAuditAction.LIST, null, correlationId,
                 Map.of("count", items.size()));
         return items.stream().map(this::toResponse).toList();
     }
@@ -354,11 +376,11 @@ public class CandidateApplicationService {
     }
 
     private void assertEstablishmentAccess(User actor, UUID establishmentId) {
-        Establishment establishment = establishmentJpaRepository.findById(establishmentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Etablissement introuvable"));
-        if (!actor.hasRole("SUPER_ADMIN") && !actor.getId().equals(establishment.getCreatedByUserId())) {
-            throw new PermissionDeniedException("establishments:scope");
-        }
+        establishmentAccessGuard.assertAccess(actor, establishmentId);
+    }
+
+    private boolean isOperatorOnly(User actor) {
+        return actor.hasRole("OPERATOR") && !actor.hasRole("ADMIN") && !actor.hasRole("SUPER_ADMIN");
     }
 
     private Establishment establishment(UUID establishmentId) {

@@ -166,6 +166,21 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
     }
 
+    @ExceptionHandler(com.aerixa.app.domain.whatsapp.exception.WhatsappConfigurationMissingException.class)
+    public ResponseEntity<ErrorResponse> handleWhatsappConfigurationMissing(
+            com.aerixa.app.domain.whatsapp.exception.WhatsappConfigurationMissingException ex, WebRequest request) {
+        ErrorResponse response = ErrorResponse.builder()
+                .errorCode("WHATSAPP_CONFIG_MISSING")
+                .message(ex.getMessage())
+                .messageKey("error.whatsapp_config_missing")
+                .timestamp(LocalDateTime.now())
+                .path(request.getDescription(false).replace("uri=", ""))
+                .statusCode(HttpStatus.NOT_FOUND.value())
+                .details(Map.of("establishmentId", ex.getEstablishmentId().toString()))
+                .build();
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+    }
+
     @ExceptionHandler(UnsupportedOperationException.class)
     public ResponseEntity<ErrorResponse> handleUnsupportedOperation(
             UnsupportedOperationException ex, WebRequest request) {

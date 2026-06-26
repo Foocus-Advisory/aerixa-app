@@ -55,6 +55,15 @@ public class CandidateApplicationsController {
         return ResponseEntity.ok(candidateApplicationService.list(currentUserId(authentication), establishmentId, candidateId, resolveCorrelationId(httpRequest)));
     }
 
+    @GetMapping("/api/v1/candidate-applications")
+    @PreAuthorize("hasAuthority('candidate_applications:list')")
+    @Operation(summary = "Lister toutes les candidatures d'un etablissement")
+    public ResponseEntity<List<CandidateApplicationResponse>> listByEstablishment(@RequestParam UUID establishmentId,
+                                                                                     Authentication authentication,
+                                                                                     HttpServletRequest httpRequest) {
+        return ResponseEntity.ok(candidateApplicationService.listByEstablishment(currentUserId(authentication), establishmentId, resolveCorrelationId(httpRequest)));
+    }
+
     @GetMapping("/api/v1/candidate-applications/{id}")
     @PreAuthorize("hasAuthority('candidate_applications:read')")
     @Operation(summary = "Lire une candidature")

@@ -36,6 +36,7 @@ public class CandidateResponse {
     private String observations;
     private WhatsappTarget preferredWhatsappTarget;
     private CandidateStatus status;
+    private UUID assignedOperatorId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private UUID createdByUserId;

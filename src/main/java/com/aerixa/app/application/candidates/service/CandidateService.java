@@ -12,6 +12,7 @@ import com.aerixa.app.application.configuration.audit.ConfigurationAuditEvent;
 import com.aerixa.app.application.configuration.audit.ConfigurationAuditOutcome;
 import com.aerixa.app.application.configuration.audit.ConfigurationAuditPublisher;
 import com.aerixa.app.application.configuration.security.ConfigurationPermissionGuard;
+import com.aerixa.app.application.configuration.security.EstablishmentAccessGuard;
 import com.aerixa.app.domain.auth.entity.User;
 import com.aerixa.app.domain.auth.exception.PermissionDeniedException;
 import com.aerixa.app.domain.auth.exception.UserNotFoundException;
@@ -26,6 +27,7 @@ import com.aerixa.app.domain.configuration.entity.Establishment;
 import com.aerixa.app.domain.configuration.entity.EntryDiploma;
 import com.aerixa.app.domain.configuration.entity.ProgramTrack;
 import com.aerixa.app.domain.configuration.entity.ProgramTrackLevel;
+import com.aerixa.app.infrastructure.auth.repository.OperatorEstablishmentAssignmentJpaRepository;
 import com.aerixa.app.infrastructure.candidates.repository.CandidateJpaRepository;
 import com.aerixa.app.infrastructure.configuration.repository.AcademicLevelJpaRepository;
 import com.aerixa.app.infrastructure.configuration.repository.AcquisitionChannelJpaRepository;
@@ -69,6 +71,8 @@ public class CandidateService {
     private final UserRepository userRepository;
     private final ConfigurationPermissionGuard permissionGuard;
     private final ConfigurationAuditPublisher auditPublisher;
+    private final EstablishmentAccessGuard establishmentAccessGuard;
+    private final OperatorEstablishmentAssignmentJpaRepository operatorEstablishmentAssignmentJpaRepository;
 
     @Transactional
     public CandidateResponse create(UUID actorUserId, CreateCandidateRequest request, String correlationId) {
@@ -106,6 +110,7 @@ public class CandidateService {
                     .preferredWhatsappTarget(request.getPreferredWhatsappTarget() != null
                             ? request.getPreferredWhatsappTarget() : WhatsappTarget.CANDIDATE)
                     .status(CandidateStatus.ACTIVE)
+                    .assignedOperatorId(isOperatorOnly(actor) ? actor.getId() : null)
                     .createdByUserId(actor.getId())
                     .createdByLabel(actor.getEmail())
                     .build());
@@ -126,8 +131,10 @@ public class CandidateService {
         permissionGuard.assertHasPermission(actor, CandidatesPermissions.CANDIDATES_LIST);
         assertEstablishmentAccess(actor, establishmentId);
 
-        List<Candidate> items = candidateJpaRepository.findAllByEstablishmentId(establishmentId,
-                Sort.by(Sort.Direction.ASC, "lastName", "firstName"));
+        Sort sort = Sort.by(Sort.Direction.ASC, "lastName", "firstName");
+        List<Candidate> items = isOperatorOnly(actor)
+                ? candidateJpaRepository.findVisibleToOperator(establishmentId, actor.getId(), sort)
+                : candidateJpaRepository.findAllByEstablishmentId(establishmentId, sort);
         publishSuccess(actor.getId(), establishmentId, ConfigurationAuditAction.LIST, null, correlationId,
                 Map.of("count", items.size()));
         return items.stream().map(this::toResponse).toList();
@@ -139,7 +146,7 @@ public class CandidateService {
         permissionGuard.assertHasPermission(actor, CandidatesPermissions.CANDIDATES_READ);
         assertEstablishmentAccess(actor, establishmentId);
 
-        Candidate item = resolveScoped(candidateId, establishmentId);
+        Candidate item = resolveScoped(actor, candidateId, establishmentId);
         publishSuccess(actor.getId(), establishmentId, ConfigurationAuditAction.READ, item.getId(), correlationId, Map.of());
         return toResponse(item);
     }
@@ -151,7 +158,7 @@ public class CandidateService {
         permissionGuard.assertHasPermission(actor, CandidatesPermissions.CANDIDATES_UPDATE);
         assertEstablishmentAccess(actor, establishmentId);
 
-        Candidate item = resolveScoped(candidateId, establishmentId);
+        Candidate item = resolveScoped(actor, candidateId, establishmentId);
 
         try {
             if (request == null) {
@@ -216,6 +223,15 @@ public class CandidateService {
             if (request.getPreferredWhatsappTarget() != null) {
                 item.setPreferredWhatsappTarget(request.getPreferredWhatsappTarget());
             }
+            if (request.getAssignedOperatorId() != null
+                    && !request.getAssignedOperatorId().equals(item.getAssignedOperatorId())) {
+                permissionGuard.assertHasPermission(actor, CandidatesPermissions.CANDIDATES_ASSIGN_OPERATOR);
+                if (!operatorEstablishmentAssignmentJpaRepository
+                        .existsByOperatorUserIdAndEstablishmentId(request.getAssignedOperatorId(), establishmentId)) {
+                    throw new IllegalArgumentException("L'operateur cible n'est pas affecte a cet etablissement");
+                }
+                item.setAssignedOperatorId(request.getAssignedOperatorId());
+            }
 
             item.setUpdatedByUserId(actor.getId());
             item.setUpdatedByLabel(actor.getEmail());
@@ -237,7 +253,7 @@ public class CandidateService {
         permissionGuard.assertHasPermission(actor, CandidatesPermissions.CANDIDATES_DELETE);
         assertEstablishmentAccess(actor, establishmentId);
 
-        Candidate item = resolveScoped(candidateId, establishmentId);
+        Candidate item = resolveScoped(actor, candidateId, establishmentId);
 
         try {
             Map<String, Object> before = toMap(item);
@@ -257,7 +273,7 @@ public class CandidateService {
         permissionGuard.assertHasPermission(actor, CandidatesPermissions.CANDIDATES_HARD_DELETE);
         assertEstablishmentAccess(actor, establishmentId);
 
-        resolveScoped(candidateId, establishmentId);
+        resolveScoped(actor, candidateId, establishmentId);
 
         try {
             candidateJpaRepository.hardDeleteByIdAndEstablishmentId(candidateId, establishmentId);
@@ -289,7 +305,7 @@ public class CandidateService {
         permissionGuard.assertHasPermission(actor, CandidatesPermissions.CANDIDATES_READ);
         assertEstablishmentAccess(actor, establishmentId);
 
-        Candidate candidate = resolveScoped(candidateId, establishmentId);
+        Candidate candidate = resolveScoped(actor, candidateId, establishmentId);
         EntryDiploma entryDiploma = entryDiplomaJpaRepository.findByIdAndEstablishmentId(candidate.getEntryDiplomaId(), establishmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Diplome d'entree introuvable"));
 
@@ -321,8 +337,10 @@ public class CandidateService {
         permissionGuard.assertHasPermission(actor, CandidatesPermissions.CANDIDATES_EXPORT);
         assertEstablishmentAccess(actor, establishmentId);
 
-        List<Candidate> items = candidateJpaRepository.findAllByEstablishmentId(establishmentId,
-                Sort.by(Sort.Direction.ASC, "lastName", "firstName"));
+        Sort exportSort = Sort.by(Sort.Direction.ASC, "lastName", "firstName");
+        List<Candidate> items = isOperatorOnly(actor)
+                ? candidateJpaRepository.findVisibleToOperator(establishmentId, actor.getId(), exportSort)
+                : candidateJpaRepository.findAllByEstablishmentId(establishmentId, exportSort);
 
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sheet = workbook.createSheet("candidates");
@@ -585,7 +603,7 @@ public class CandidateService {
         permissionGuard.assertHasPermission(actor, permission);
         assertEstablishmentAccess(actor, establishmentId);
 
-        Candidate item = resolveScoped(candidateId, establishmentId);
+        Candidate item = resolveScoped(actor, candidateId, establishmentId);
         try {
             CandidateStatus before = item.getStatus();
             item.setStatus(status);
@@ -625,17 +643,25 @@ public class CandidateService {
         return request.getEstablishmentId();
     }
 
-    private Candidate resolveScoped(UUID candidateId, UUID establishmentId) {
-        return candidateJpaRepository.findByIdAndEstablishmentId(candidateId, establishmentId)
+    private Candidate resolveScoped(User actor, UUID candidateId, UUID establishmentId) {
+        Candidate candidate = candidateJpaRepository.findByIdAndEstablishmentId(candidateId, establishmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Candidat introuvable"));
+
+        if (isOperatorOnly(actor)
+                && !actor.getId().equals(candidate.getCreatedByUserId())
+                && !actor.getId().equals(candidate.getAssignedOperatorId())) {
+            throw new ResourceNotFoundException("Candidat introuvable");
+        }
+
+        return candidate;
     }
 
     private void assertEstablishmentAccess(User actor, UUID establishmentId) {
-        Establishment establishment = establishmentJpaRepository.findById(establishmentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Etablissement introuvable"));
-        if (!actor.hasRole("SUPER_ADMIN") && !actor.getId().equals(establishment.getCreatedByUserId())) {
-            throw new PermissionDeniedException("establishments:scope");
-        }
+        establishmentAccessGuard.assertAccess(actor, establishmentId);
+    }
+
+    private boolean isOperatorOnly(User actor) {
+        return actor.hasRole("OPERATOR") && !actor.hasRole("ADMIN") && !actor.hasRole("SUPER_ADMIN");
     }
 
     private User actor(UUID actorUserId) {
@@ -664,6 +690,7 @@ public class CandidateService {
                 .observations(item.getObservations())
                 .preferredWhatsappTarget(item.getPreferredWhatsappTarget())
                 .status(item.getStatus())
+                .assignedOperatorId(item.getAssignedOperatorId())
                 .createdAt(item.getCreatedAt())
                 .updatedAt(item.getUpdatedAt())
                 .createdByUserId(item.getCreatedByUserId())

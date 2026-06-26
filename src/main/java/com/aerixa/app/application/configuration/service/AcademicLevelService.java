@@ -12,15 +12,14 @@ import com.aerixa.app.application.configuration.dto.EntryDiplomaResponse;
 import com.aerixa.app.application.configuration.dto.UpdateAcademicLevelRequest;
 import com.aerixa.app.application.configuration.security.ConfigurationPermissionGuard;
 import com.aerixa.app.application.configuration.security.ConfigurationPermissions;
+import com.aerixa.app.application.configuration.security.EstablishmentAccessGuard;
 import com.aerixa.app.domain.auth.entity.User;
 import com.aerixa.app.domain.auth.exception.UserNotFoundException;
 import com.aerixa.app.domain.auth.repository.UserRepository;
 import com.aerixa.app.domain.configuration.entity.AcademicLevel;
 import com.aerixa.app.domain.configuration.entity.EntryDiploma;
-import com.aerixa.app.domain.configuration.entity.Establishment;
 import com.aerixa.app.infrastructure.configuration.repository.AcademicLevelJpaRepository;
 import com.aerixa.app.infrastructure.configuration.repository.EntryDiplomaJpaRepository;
-import com.aerixa.app.infrastructure.configuration.repository.EstablishmentJpaRepository;
 import com.aerixa.app.infrastructure.error.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.DataFormatter;
@@ -49,10 +48,10 @@ public class AcademicLevelService {
 
     private final AcademicLevelJpaRepository academicLevelJpaRepository;
     private final EntryDiplomaJpaRepository entryDiplomaJpaRepository;
-    private final EstablishmentJpaRepository establishmentJpaRepository;
     private final UserRepository userRepository;
     private final ConfigurationPermissionGuard configurationPermissionGuard;
     private final ConfigurationAuditPublisher configurationAuditPublisher;
+    private final EstablishmentAccessGuard establishmentAccessGuard;
 
     @Transactional
     public AcademicLevelResponse create(UUID actorUserId, CreateAcademicLevelRequest request, String correlationId) {
@@ -507,12 +506,7 @@ public class AcademicLevelService {
     }
 
     private void assertEstablishmentAccess(User actor, UUID establishmentId) {
-        Establishment establishment = establishmentJpaRepository.findById(establishmentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Etablissement introuvable"));
-
-        if (!actor.hasRole("SUPER_ADMIN") && !actor.getId().equals(establishment.getCreatedByUserId())) {
-            throw new com.aerixa.app.domain.auth.exception.PermissionDeniedException("establishments:scope");
-        }
+        establishmentAccessGuard.assertAccess(actor, establishmentId);
     }
 
     private User actor(UUID actorUserId) {

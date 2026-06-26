@@ -121,7 +121,8 @@ public class AuditLogService {
                         return ownLogs;
                     }
                     Predicate establishmentMatch = root.get("establishmentId").in(adminEstablishmentIds);
-                    Predicate operatorRole = cb.like(root.get("actorRoles"), "%OPERATOR%");
+                    Predicate operatorRole = cb.isTrue(
+                            cb.function("jsonb_exists", Boolean.class, root.get("actorRoles"), cb.literal("ROLE_OPERATOR")));
                     return cb.or(ownLogs, cb.and(establishmentMatch, operatorRole));
                 };
                 spec = spec.and(scopedSpec);

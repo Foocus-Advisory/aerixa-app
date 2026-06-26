@@ -9,19 +9,23 @@ import com.aerixa.app.application.configuration.security.ConfigurationPermission
 import com.aerixa.app.application.notification.service.NotificationJobService;
 import com.aerixa.app.application.whatsapp.dto.CandidateConversationMessageResponse;
 import com.aerixa.app.application.whatsapp.dto.CandidateConversationResponse;
+import com.aerixa.app.application.whatsapp.dto.CreateCandidateConversationRequest;
 import com.aerixa.app.application.whatsapp.dto.SendCandidateConversationMessageRequest;
 import com.aerixa.app.application.whatsapp.security.CandidateConversationsPermissions;
 import com.aerixa.app.application.whatsapp.security.ConversationVisibilityService;
 import com.aerixa.app.domain.auth.entity.User;
 import com.aerixa.app.domain.auth.exception.UserNotFoundException;
 import com.aerixa.app.domain.auth.repository.UserRepository;
+import com.aerixa.app.domain.candidates.entity.Candidate;
 import com.aerixa.app.domain.notification.entity.NotificationJobType;
 import com.aerixa.app.domain.whatsapp.entity.CandidateConversation;
 import com.aerixa.app.domain.whatsapp.entity.CandidateConversationMessage;
+import com.aerixa.app.domain.whatsapp.entity.ConversationTargetPhoneOwner;
 import com.aerixa.app.domain.whatsapp.entity.EstablishmentWhatsappConfig;
 import com.aerixa.app.domain.whatsapp.entity.MessageDeliveryStatus;
 import com.aerixa.app.domain.whatsapp.entity.MessageDirection;
 import com.aerixa.app.domain.whatsapp.entity.MessageType;
+import com.aerixa.app.domain.whatsapp.exception.WhatsappConfigurationMissingException;
 import com.aerixa.app.infrastructure.candidates.repository.CandidateJpaRepository;
 import com.aerixa.app.infrastructure.error.ResourceNotFoundException;
 import com.aerixa.app.infrastructure.security.EncryptionService;
@@ -69,6 +73,60 @@ public class CandidateConversationService {
 
         publishSuccess(actor.getId(), establishmentId, ConfigurationAuditAction.LIST, candidateId, correlationId, Map.of("count", conversations.size()));
         return conversations.stream().map(this::toResponse).toList();
+    }
+
+    @Transactional
+    public CandidateConversationResponse createForCandidate(UUID actorUserId, UUID establishmentId, UUID candidateId,
+                                                              CreateCandidateConversationRequest request, String correlationId) {
+        User actor = actor(actorUserId);
+        permissionGuard.assertHasPermission(actor, CandidateConversationsPermissions.CANDIDATE_CONVERSATIONS_CREATE);
+        conversationVisibilityService.assertCanAccessEstablishment(actor, establishmentId);
+
+        try {
+            Candidate candidate = candidateJpaRepository.findByIdAndEstablishmentId(candidateId, establishmentId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Candidat introuvable"));
+
+            if (request == null || request.getTargetPhoneOwner() == null) {
+                throw new IllegalArgumentException("Le destinataire de la conversation est obligatoire");
+            }
+
+            String phoneNumber = resolvePhoneNumber(candidate, request.getTargetPhoneOwner());
+            if (phoneNumber == null || phoneNumber.isBlank()) {
+                throw new IllegalStateException("Aucun numero de telephone disponible pour ce destinataire");
+            }
+
+            CandidateConversation conversation = candidateConversationJpaRepository
+                    .findByEstablishmentIdAndTargetPhoneNumber(establishmentId, phoneNumber)
+                    .orElseGet(() -> candidateConversationJpaRepository.save(CandidateConversation.builder()
+                            .establishmentId(establishmentId)
+                            .candidateId(candidate.getId())
+                            .targetPhoneNumber(phoneNumber)
+                            .targetPhoneOwner(request.getTargetPhoneOwner())
+                            .build()));
+
+            if (conversation.getCandidateId() == null) {
+                conversation.setCandidateId(candidate.getId());
+                conversation.setTargetPhoneOwner(request.getTargetPhoneOwner());
+                conversation = candidateConversationJpaRepository.save(conversation);
+            }
+
+            publishSuccess(actor.getId(), establishmentId, ConfigurationAuditAction.CREATE, conversation.getId(), correlationId,
+                    Map.of("candidateId", candidate.getId().toString(), "targetPhoneOwner", request.getTargetPhoneOwner().name()));
+
+            return toResponse(conversation);
+        } catch (RuntimeException ex) {
+            publishFailure(actor.getId(), establishmentId, ConfigurationAuditAction.CREATE, candidateId, correlationId,
+                    "CANDIDATE_CONVERSATION_CREATE_FAILED", ex);
+            throw ex;
+        }
+    }
+
+    private String resolvePhoneNumber(Candidate candidate, ConversationTargetPhoneOwner owner) {
+        return switch (owner) {
+            case PARENT_1 -> candidate.getParentPhone1();
+            case PARENT_2 -> candidate.getParentPhone2();
+            case CANDIDATE -> candidate.getCandidatePhone();
+        };
     }
 
     @Transactional(readOnly = true)
@@ -163,7 +221,7 @@ public class CandidateConversationService {
 
     private EstablishmentWhatsappConfig resolveConfig(UUID establishmentId) {
         return establishmentWhatsappConfigJpaRepository.findByEstablishmentId(establishmentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Configuration WhatsApp introuvable pour cet etablissement"));
+                .orElseThrow(() -> new WhatsappConfigurationMissingException(establishmentId));
     }
 
     private CandidateConversation resolveScoped(UUID conversationId, UUID establishmentId) {

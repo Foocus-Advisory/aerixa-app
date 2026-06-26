@@ -1,7 +1,9 @@
 package com.aerixa.app.application.candidates.service;
 
+import com.aerixa.app.application.candidates.dto.CandidateNoteAttachmentResponse;
 import com.aerixa.app.application.candidates.dto.CandidateNoteResponse;
 import com.aerixa.app.application.candidates.dto.CreateCandidateNoteRequest;
+import com.aerixa.app.application.candidates.dto.UpdateCandidateNoteRequest;
 import com.aerixa.app.application.candidates.security.CandidatesPermissions;
 import com.aerixa.app.application.configuration.audit.ConfigurationAuditAction;
 import com.aerixa.app.application.configuration.audit.ConfigurationAuditEntityType;
@@ -9,6 +11,7 @@ import com.aerixa.app.application.configuration.audit.ConfigurationAuditEvent;
 import com.aerixa.app.application.configuration.audit.ConfigurationAuditOutcome;
 import com.aerixa.app.application.configuration.audit.ConfigurationAuditPublisher;
 import com.aerixa.app.application.configuration.security.ConfigurationPermissionGuard;
+import com.aerixa.app.application.configuration.security.EstablishmentAccessGuard;
 import com.aerixa.app.domain.auth.entity.User;
 import com.aerixa.app.domain.auth.exception.PermissionDeniedException;
 import com.aerixa.app.domain.auth.exception.UserNotFoundException;
@@ -16,10 +19,12 @@ import com.aerixa.app.domain.auth.repository.UserRepository;
 import com.aerixa.app.domain.candidates.entity.Candidate;
 import com.aerixa.app.domain.candidates.entity.CandidateApplication;
 import com.aerixa.app.domain.candidates.entity.CandidateNote;
+import com.aerixa.app.domain.candidates.entity.CandidateNoteAttachment;
 import com.aerixa.app.domain.candidates.entity.CandidateNoteType;
 import com.aerixa.app.domain.configuration.entity.Establishment;
 import com.aerixa.app.infrastructure.candidates.repository.CandidateApplicationJpaRepository;
 import com.aerixa.app.infrastructure.candidates.repository.CandidateJpaRepository;
+import com.aerixa.app.infrastructure.candidates.repository.CandidateNoteAttachmentJpaRepository;
 import com.aerixa.app.infrastructure.candidates.repository.CandidateNoteJpaRepository;
 import com.aerixa.app.infrastructure.configuration.repository.EstablishmentJpaRepository;
 import com.aerixa.app.infrastructure.error.ResourceNotFoundException;
@@ -28,6 +33,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -37,12 +44,14 @@ import java.util.UUID;
 public class CandidateNoteService {
 
     private final CandidateNoteJpaRepository candidateNoteJpaRepository;
+    private final CandidateNoteAttachmentJpaRepository candidateNoteAttachmentJpaRepository;
     private final CandidateJpaRepository candidateJpaRepository;
     private final CandidateApplicationJpaRepository candidateApplicationJpaRepository;
     private final EstablishmentJpaRepository establishmentJpaRepository;
     private final UserRepository userRepository;
     private final ConfigurationPermissionGuard permissionGuard;
     private final ConfigurationAuditPublisher auditPublisher;
+    private final EstablishmentAccessGuard establishmentAccessGuard;
 
     @Transactional
     public CandidateNoteResponse create(UUID actorUserId, UUID candidateId, CreateCandidateNoteRequest request, String correlationId) {
@@ -80,7 +89,7 @@ public class CandidateNoteService {
 
             publishSuccess(actor.getId(), establishmentId, ConfigurationAuditAction.CREATE, saved.getId(), correlationId,
                     Map.of("after", toMap(saved)));
-            return toResponse(saved);
+            return toResponse(saved, actor);
         } catch (RuntimeException ex) {
             publishFailure(actor.getId(), request == null ? null : request.getEstablishmentId(), ConfigurationAuditAction.CREATE,
                     null, correlationId, "CANDIDATE_NOTE_CREATE_FAILED", ex);
@@ -101,7 +110,113 @@ public class CandidateNoteService {
                 Sort.by(Sort.Direction.DESC, "createdAt"));
         publishSuccess(actor.getId(), establishmentId, ConfigurationAuditAction.LIST, candidateId, correlationId,
                 Map.of("count", items.size()));
-        return items.stream().map(this::toResponse).toList();
+        return items.stream().map(item -> toResponse(item, actor)).toList();
+    }
+
+    /**
+     * Liste les notes (FREE_TEXT non supprimees) d'une candidature precise, avec leurs
+     * pieces jointes. C'est le point d'entree utilise par l'onglet Notes de la page de
+     * detail candidature (rattachement decide : CandidateApplication, pas Candidate).
+     */
+    @Transactional(readOnly = true)
+    public List<CandidateNoteResponse> listByApplication(UUID actorUserId, UUID establishmentId, UUID candidateApplicationId,
+                                                           String correlationId) {
+        User actor = actor(actorUserId);
+        permissionGuard.assertHasPermission(actor, CandidatesPermissions.CANDIDATE_NOTES_LIST);
+        assertEstablishmentAccess(actor, establishmentId);
+
+        candidateApplicationJpaRepository.findByIdAndEstablishmentId(candidateApplicationId, establishmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Candidature introuvable"));
+
+        List<CandidateNote> items = candidateNoteJpaRepository
+                .findAllByEstablishmentIdAndCandidateApplicationIdAndDeletedAtIsNull(establishmentId, candidateApplicationId,
+                        Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        Map<UUID, List<CandidateNoteAttachment>> attachmentsByNote = candidateNoteAttachmentJpaRepository
+                .findAllByCandidateNoteIdInAndDeletedAtIsNull(items.stream().map(CandidateNote::getId).toList(),
+                        Sort.by(Sort.Direction.ASC, "createdAt"))
+                .stream()
+                .collect(java.util.stream.Collectors.groupingBy(CandidateNoteAttachment::getCandidateNoteId));
+
+        publishSuccess(actor.getId(), establishmentId, ConfigurationAuditAction.LIST, candidateApplicationId, correlationId,
+                Map.of("count", items.size()));
+
+        return items.stream()
+                .map(item -> toResponse(item, actor, attachmentsByNote.getOrDefault(item.getId(), List.of())))
+                .toList();
+    }
+
+    @Transactional
+    public CandidateNoteResponse update(UUID actorUserId, UUID establishmentId, UUID noteId, UpdateCandidateNoteRequest request,
+                                         String correlationId) {
+        User actor = actor(actorUserId);
+        permissionGuard.assertHasPermission(actor, CandidatesPermissions.CANDIDATE_NOTES_UPDATE);
+        assertEstablishmentAccess(actor, establishmentId);
+
+        try {
+            CandidateNote note = candidateNoteJpaRepository.findByIdAndEstablishmentId(noteId, establishmentId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Note introuvable"));
+            if (note.isDeleted()) {
+                throw new ResourceNotFoundException("Note introuvable");
+            }
+            if (request == null || request.getContent() == null || request.getContent().isBlank()) {
+                throw new IllegalArgumentException("Le contenu de la note est obligatoire");
+            }
+            // Regle d'autorisation au niveau ressource : seul l'auteur peut modifier sa note,
+            // meme si un autre acteur detient la permission candidate_notes:update.
+            if (note.getAuthorUserId() == null || !note.getAuthorUserId().equals(actor.getId())) {
+                throw new PermissionDeniedException(CandidatesPermissions.CANDIDATE_NOTES_UPDATE);
+            }
+
+            Map<String, Object> before = toMap(note);
+            note.setContent(request.getContent());
+            note.setUpdatedByUserId(actor.getId());
+            note.setUpdatedByLabel(actor.getEmail());
+            CandidateNote saved = candidateNoteJpaRepository.save(note);
+
+            publishSuccess(actor.getId(), establishmentId, ConfigurationAuditAction.UPDATE, saved.getId(), correlationId,
+                    Map.of("before", before, "after", toMap(saved)));
+            return toResponse(saved, actor);
+        } catch (RuntimeException ex) {
+            publishFailure(actor.getId(), establishmentId, ConfigurationAuditAction.UPDATE, noteId, correlationId,
+                    "CANDIDATE_NOTE_UPDATE_FAILED", ex);
+            throw ex;
+        }
+    }
+
+    @Transactional
+    public void delete(UUID actorUserId, UUID establishmentId, UUID noteId, String correlationId) {
+        User actor = actor(actorUserId);
+        permissionGuard.assertHasPermission(actor, CandidatesPermissions.CANDIDATE_NOTES_DELETE);
+        assertEstablishmentAccess(actor, establishmentId);
+
+        try {
+            CandidateNote note = candidateNoteJpaRepository.findByIdAndEstablishmentId(noteId, establishmentId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Note introuvable"));
+            if (note.isDeleted()) {
+                throw new ResourceNotFoundException("Note introuvable");
+            }
+            boolean isAuthor = note.getAuthorUserId() != null && note.getAuthorUserId().equals(actor.getId());
+            boolean isElevated = actor.hasRole("SUPER_ADMIN") || actor.hasRole("ADMIN");
+            // Consulter/supprimer une note d'autrui est autorise pour ADMIN/SUPER_ADMIN, mais
+            // doit etre trace distinctement (reasonCode) pour que l'onglet Audit le mette en
+            // evidence comme une action sur une ressource dont l'acteur n'est pas l'auteur.
+            if (!isAuthor && !isElevated) {
+                throw new PermissionDeniedException(CandidatesPermissions.CANDIDATE_NOTES_DELETE);
+            }
+
+            note.setDeletedAt(LocalDateTime.now());
+            note.setUpdatedByUserId(actor.getId());
+            note.setUpdatedByLabel(actor.getEmail());
+            candidateNoteJpaRepository.save(note);
+
+            publishSuccess(actor.getId(), establishmentId, ConfigurationAuditAction.DELETE, note.getId(), correlationId,
+                    Map.of("deletedByAuthor", isAuthor, "content", note.getContent()));
+        } catch (RuntimeException ex) {
+            publishFailure(actor.getId(), establishmentId, ConfigurationAuditAction.DELETE, noteId, correlationId,
+                    "CANDIDATE_NOTE_DELETE_FAILED", ex);
+            throw ex;
+        }
     }
 
     @Transactional
@@ -143,11 +258,7 @@ public class CandidateNoteService {
     }
 
     private void assertEstablishmentAccess(User actor, UUID establishmentId) {
-        Establishment establishment = establishmentJpaRepository.findById(establishmentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Etablissement introuvable"));
-        if (!actor.hasRole("SUPER_ADMIN") && !actor.getId().equals(establishment.getCreatedByUserId())) {
-            throw new PermissionDeniedException("establishments:scope");
-        }
+        establishmentAccessGuard.assertAccess(actor, establishmentId);
     }
 
     private User actor(UUID actorUserId) {
@@ -155,7 +266,14 @@ public class CandidateNoteService {
                 .orElseThrow(() -> new UserNotFoundException(actorUserId));
     }
 
-    private CandidateNoteResponse toResponse(CandidateNote item) {
+    private CandidateNoteResponse toResponse(CandidateNote item, User actor) {
+        return toResponse(item, actor, List.of());
+    }
+
+    private CandidateNoteResponse toResponse(CandidateNote item, User actor, List<CandidateNoteAttachment> attachments) {
+        boolean isAuthor = item.getAuthorUserId() != null && item.getAuthorUserId().equals(actor.getId());
+        boolean isElevated = actor.hasRole("SUPER_ADMIN") || actor.hasRole("ADMIN");
+
         return CandidateNoteResponse.builder()
                 .id(item.getId())
                 .establishmentId(item.getEstablishmentId())
@@ -164,7 +282,30 @@ public class CandidateNoteService {
                 .type(item.getType())
                 .content(item.getContent())
                 .authorUserId(item.getAuthorUserId())
+                .authorLabel(item.getCreatedByLabel())
                 .createdAt(item.getCreatedAt())
+                .updatedAt(item.getUpdatedAt())
+                .edited(item.getUpdatedAt() != null && item.getCreatedAt() != null
+                        && item.getUpdatedAt().isAfter(item.getCreatedAt().plusSeconds(1)))
+                .editableByCurrentUser(isAuthor)
+                .deletableByCurrentUser(isAuthor || isElevated)
+                .attachments(attachments.stream()
+                        .sorted(Comparator.comparing(CandidateNoteAttachment::getCreatedAt))
+                        .map(this::toAttachmentResponse)
+                        .toList())
+                .build();
+    }
+
+    private CandidateNoteAttachmentResponse toAttachmentResponse(CandidateNoteAttachment attachment) {
+        return CandidateNoteAttachmentResponse.builder()
+                .id(attachment.getId())
+                .candidateNoteId(attachment.getCandidateNoteId())
+                .contentType(attachment.getContentType())
+                .filename(attachment.getFilename())
+                .fileSize(attachment.getFileSize())
+                .uploadedByUserId(attachment.getUploadedByUserId())
+                .uploadedByLabel(attachment.getUploadedByLabel())
+                .createdAt(attachment.getCreatedAt())
                 .build();
     }
 

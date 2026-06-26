@@ -72,9 +72,11 @@ public class User extends SoftDeletableEntity {
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(nullable = false, columnDefinition = "user_status")
+    @Builder.Default
     private UserStatus status = UserStatus.PENDING_VERIFICATION;
 
     @Column(name = "email_verified", nullable = false)
+    @Builder.Default
     private Boolean emailVerified = false;
 
     @Column(name = "email_verified_at")
@@ -87,9 +89,11 @@ public class User extends SoftDeletableEntity {
     private LocalDateTime passwordChangedAt;
 
     @Column(name = "must_change_password", nullable = false)
+    @Builder.Default
     private Boolean mustChangePassword = false;
 
     @Column(name = "mfa_enabled", nullable = false)
+    @Builder.Default
     private Boolean mfaEnabled = false;
 
     @Column(name = "mfa_method", length = 50)

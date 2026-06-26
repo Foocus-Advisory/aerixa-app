@@ -19,6 +19,11 @@ public interface CandidateJpaRepository extends JpaRepository<Candidate, UUID> {
 
     Optional<Candidate> findByIdAndEstablishmentId(UUID id, UUID establishmentId);
 
+    @Query("SELECT c FROM Candidate c WHERE c.establishmentId = :establishmentId "
+            + "AND (c.createdByUserId = :operatorId OR c.assignedOperatorId = :operatorId)")
+    List<Candidate> findVisibleToOperator(@Param("establishmentId") UUID establishmentId,
+                                           @Param("operatorId") UUID operatorId, Sort sort);
+
     @Query(value = "SELECT * FROM auth.candidates "
             + "WHERE establishment_id = :establishmentId "
             + "AND deleted_at IS NULL "

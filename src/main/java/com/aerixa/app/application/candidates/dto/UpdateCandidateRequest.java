@@ -31,4 +31,5 @@ public class UpdateCandidateRequest {
     private CandidateGender gender;
     private String observations;
     private WhatsappTarget preferredWhatsappTarget;
+    private UUID assignedOperatorId;
 }

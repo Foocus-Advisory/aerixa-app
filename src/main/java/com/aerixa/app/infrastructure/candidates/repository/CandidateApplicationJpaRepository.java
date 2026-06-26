@@ -4,6 +4,8 @@ import com.aerixa.app.domain.candidates.entity.CandidateApplication;
 import com.aerixa.app.domain.candidates.entity.CandidateApplicationStatus;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -14,6 +16,14 @@ import java.util.UUID;
 public interface CandidateApplicationJpaRepository extends JpaRepository<CandidateApplication, UUID> {
 
     List<CandidateApplication> findAllByEstablishmentIdAndCandidateId(UUID establishmentId, UUID candidateId, Sort sort);
+
+    List<CandidateApplication> findAllByEstablishmentId(UUID establishmentId, Sort sort);
+
+    @Query("SELECT a FROM CandidateApplication a, Candidate c "
+            + "WHERE a.candidateId = c.id AND a.establishmentId = :establishmentId "
+            + "AND (c.createdByUserId = :operatorId OR c.assignedOperatorId = :operatorId)")
+    List<CandidateApplication> findVisibleToOperatorByEstablishment(@Param("establishmentId") UUID establishmentId,
+                                                                      @Param("operatorId") UUID operatorId, Sort sort);
 
     Optional<CandidateApplication> findByIdAndEstablishmentId(UUID id, UUID establishmentId);
 

@@ -33,6 +33,12 @@ public interface UserJpaRepository extends JpaRepository<User, UUID>, UserReposi
 
     Page<User> findAllByParentAdminIdAndStatus(UUID parentAdminId, User.UserStatus status, Pageable pageable);
 
+    @Query("select u from User u where u.parentAdmin.id = :actorId or u.id = :actorId")
+    Page<User> findAllByParentAdminIdOrSelf(@Param("actorId") UUID actorId, Pageable pageable);
+
+    @Query("select u from User u where (u.parentAdmin.id = :actorId or u.id = :actorId) and u.status = :status")
+    Page<User> findAllByParentAdminIdOrSelfAndStatus(@Param("actorId") UUID actorId, @Param("status") User.UserStatus status, Pageable pageable);
+
     java.util.List<User> findByStatus(User.UserStatus status, Sort sort);
 
     long countByStatus(User.UserStatus status);
