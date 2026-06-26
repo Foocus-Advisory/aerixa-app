@@ -30,6 +30,14 @@ public interface FunnelStageJpaRepository extends JpaRepository<FunnelStage, UUI
 
     long countByEstablishmentIdAndStageTypeAndActiveTrueAndIdNot(UUID establishmentId, FunnelStageType stageType, UUID id);
 
+    Optional<FunnelStage> findFirstByEstablishmentIdAndStageTypeAndActiveTrue(UUID establishmentId, FunnelStageType stageType);
+
+    Optional<FunnelStage> findFirstByEstablishmentIdAndStageTypeAndActiveTrueAndDefaultAutoRejectionTrue(
+            UUID establishmentId, FunnelStageType stageType);
+
+    Optional<FunnelStage> findFirstByEstablishmentIdAndStageTypeAndActiveTrueOrderByPositionOrderAsc(
+            UUID establishmentId, FunnelStageType stageType);
+
     @Modifying
     @Query(value = "DELETE FROM auth.funnel_stages WHERE id = :id AND establishment_id = :establishmentId", nativeQuery = true)
     void hardDeleteByIdAndEstablishmentId(@Param("id") UUID id, @Param("establishmentId") UUID establishmentId);

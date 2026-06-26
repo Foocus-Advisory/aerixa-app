@@ -70,7 +70,7 @@ public class AuditLogConfigurationAuditPublisher implements ConfigurationAuditPu
             case CREATE, IMPORT -> AuditLog.AuditAction.CREATE;
             case DELETE, HARD_DELETE -> AuditLog.AuditAction.DELETE;
             case READ, LIST, EXPORT -> AuditLog.AuditAction.READ;
-            case UPDATE, ACTIVATE, DEACTIVATE -> AuditLog.AuditAction.UPDATE;
+            case UPDATE, ACTIVATE, DEACTIVATE, TRANSITION -> AuditLog.AuditAction.UPDATE;
         };
     }
 

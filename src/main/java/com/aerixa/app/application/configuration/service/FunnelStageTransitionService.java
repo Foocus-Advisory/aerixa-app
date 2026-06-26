@@ -10,14 +10,12 @@ import com.aerixa.app.application.configuration.dto.FunnelStageTransitionRespons
 import com.aerixa.app.application.configuration.dto.UpdateFunnelStageTransitionRequest;
 import com.aerixa.app.application.configuration.security.ConfigurationPermissionGuard;
 import com.aerixa.app.application.configuration.security.ConfigurationPermissions;
+import com.aerixa.app.application.configuration.security.EstablishmentAccessGuard;
 import com.aerixa.app.domain.auth.entity.User;
-import com.aerixa.app.domain.auth.exception.PermissionDeniedException;
 import com.aerixa.app.domain.auth.exception.UserNotFoundException;
 import com.aerixa.app.domain.auth.repository.UserRepository;
-import com.aerixa.app.domain.configuration.entity.Establishment;
 import com.aerixa.app.domain.configuration.entity.FunnelStage;
 import com.aerixa.app.domain.configuration.entity.FunnelStageTransition;
-import com.aerixa.app.infrastructure.configuration.repository.EstablishmentJpaRepository;
 import com.aerixa.app.infrastructure.configuration.repository.FunnelStageJpaRepository;
 import com.aerixa.app.infrastructure.configuration.repository.FunnelStageTransitionJpaRepository;
 import com.aerixa.app.infrastructure.error.ResourceNotFoundException;
@@ -36,10 +34,10 @@ public class FunnelStageTransitionService {
 
     private final FunnelStageTransitionJpaRepository funnelStageTransitionJpaRepository;
     private final FunnelStageJpaRepository funnelStageJpaRepository;
-    private final EstablishmentJpaRepository establishmentJpaRepository;
     private final UserRepository userRepository;
     private final ConfigurationPermissionGuard configurationPermissionGuard;
     private final ConfigurationAuditPublisher configurationAuditPublisher;
+    private final EstablishmentAccessGuard establishmentAccessGuard;
 
     @Transactional
     public FunnelStageTransitionResponse create(UUID actorUserId, CreateFunnelStageTransitionRequest request, String correlationId) {
@@ -239,11 +237,7 @@ public class FunnelStageTransitionService {
     }
 
     private void assertEstablishmentAccess(User actor, UUID establishmentId) {
-        Establishment establishment = establishmentJpaRepository.findById(establishmentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Etablissement introuvable"));
-        if (!actor.hasRole("SUPER_ADMIN") && !actor.getId().equals(establishment.getCreatedByUserId())) {
-            throw new PermissionDeniedException("establishments:scope");
-        }
+        establishmentAccessGuard.assertAccess(actor, establishmentId);
     }
 
     private User actor(UUID actorUserId) {

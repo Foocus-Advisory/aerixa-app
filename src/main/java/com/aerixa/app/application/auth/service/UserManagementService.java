@@ -91,7 +91,7 @@ public class UserManagementService {
         if (canReadAllUsers || canReadAllSessions) {
             scopedUsers = userJpaRepository.findAll(sort);
         } else if (canReadChildrenUsers || canReadChildrenSessions) {
-            scopedUsers = userJpaRepository.findAllByParentAdminId(actor.getId(), Pageable.unpaged()).getContent();
+            scopedUsers = userJpaRepository.findAllByParentAdminIdOrSelf(actor.getId(), Pageable.unpaged()).getContent();
         } else {
             scopedUsers = List.of(actor);
         }
@@ -158,8 +158,8 @@ public class UserManagementService {
             userPage = new org.springframework.data.domain.PageImpl<>(content, pageable, matchesStatus ? 1 : 0);
         } else {
             userPage = statusFilter == null
-                ? userJpaRepository.findAllByParentAdminId(actor.getId(), pageable)
-                : userJpaRepository.findAllByParentAdminIdAndStatus(actor.getId(), statusFilter, pageable);
+                ? userJpaRepository.findAllByParentAdminIdOrSelf(actor.getId(), pageable)
+                : userJpaRepository.findAllByParentAdminIdOrSelfAndStatus(actor.getId(), statusFilter, pageable);
         }
 
         return PagedResponse.<UserResponse>builder()
@@ -199,7 +199,7 @@ public class UserManagementService {
                 .build();
         }
 
-        List<User> managedUsers = userJpaRepository.findAllByParentAdminId(actor.getId(), Pageable.unpaged()).getContent();
+        List<User> managedUsers = userJpaRepository.findAllByParentAdminIdOrSelf(actor.getId(), Pageable.unpaged()).getContent();
         long active = managedUsers.stream().filter(user -> user.getStatus() == User.UserStatus.ACTIVE).count();
         long disabled = managedUsers.stream().filter(user -> user.getStatus() == User.UserStatus.DISABLED).count();
         long pending = managedUsers.stream().filter(user -> user.getStatus() == User.UserStatus.PENDING_VERIFICATION).count();
@@ -229,8 +229,8 @@ public class UserManagementService {
                     : userJpaRepository.findByStatus(statusFilter, sort);
         } else {
             users = statusFilter == null
-                    ? userJpaRepository.findAllByParentAdminId(actor.getId(), Pageable.unpaged()).getContent()
-                    : userJpaRepository.findAllByParentAdminIdAndStatus(actor.getId(), statusFilter, Pageable.unpaged()).getContent();
+                    ? userJpaRepository.findAllByParentAdminIdOrSelf(actor.getId(), Pageable.unpaged()).getContent()
+                    : userJpaRepository.findAllByParentAdminIdOrSelfAndStatus(actor.getId(), statusFilter, Pageable.unpaged()).getContent();
             users = users.stream().sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt())).toList();
         }
 
@@ -853,6 +853,10 @@ public class UserManagementService {
     private boolean canManageOrView(User actor, User target) {
         boolean canReadAll = hasPermission(actor, PERMISSION_USERS_READ_ALL) || actor.hasRole("SUPER_ADMIN");
         if (canReadAll) {
+            return true;
+        }
+
+        if (actor.getId().equals(target.getId())) {
             return true;
         }
 

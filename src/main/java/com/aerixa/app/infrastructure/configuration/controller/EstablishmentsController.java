@@ -1,5 +1,7 @@
 package com.aerixa.app.infrastructure.configuration.controller;
 
+import com.aerixa.app.application.auth.dto.AssignedOperatorResponse;
+import com.aerixa.app.application.auth.service.OperatorEstablishmentAssignmentService;
 import com.aerixa.app.application.configuration.dto.CreateEstablishmentRequest;
 import com.aerixa.app.application.configuration.dto.EstablishmentResponse;
 import com.aerixa.app.application.configuration.dto.UpdateEstablishmentRequest;
@@ -38,6 +40,7 @@ import java.util.UUID;
 public class EstablishmentsController {
 
     private final EstablishmentService establishmentService;
+    private final OperatorEstablishmentAssignmentService operatorEstablishmentAssignmentService;
 
     @PostMapping
     @PreAuthorize("hasAuthority('establishments:create')")
@@ -172,6 +175,16 @@ public class EstablishmentsController {
         }
 
         return responseBuilder.body(logo.content());
+    }
+
+    @GetMapping("/{id}/operators")
+    @PreAuthorize("hasAuthority('candidates:assign_operator')")
+    @Operation(summary = "Lister les operateurs affectes a un etablissement")
+    public ResponseEntity<List<AssignedOperatorResponse>> listOperators(
+            @PathVariable UUID id,
+            Authentication authentication) {
+        UUID actorId = currentUserId(authentication);
+        return ResponseEntity.ok(operatorEstablishmentAssignmentService.listAssignedOperators(actorId, id));
     }
 
     private String resolveCorrelationId(HttpServletRequest request) {

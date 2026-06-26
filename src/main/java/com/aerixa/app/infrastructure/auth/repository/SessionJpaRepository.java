@@ -47,7 +47,7 @@ public interface SessionJpaRepository extends JpaRepository<Session, UUID>, Sess
                     LEFT JOIN s.user u
                     LEFT JOIN u.parentAdmin parentAdmin
                     WHERE (:userId IS NULL OR s.user.id = :userId)
-                        AND (:canReadAll = true OR parentAdmin.id = :actorUserId)
+                        AND (:canReadAll = true OR parentAdmin.id = :actorUserId OR s.user.id = :actorUserId)
                         AND s.createdAt >= :startedFrom
                         AND s.createdAt <= :startedTo
                         AND (
@@ -69,7 +69,7 @@ public interface SessionJpaRepository extends JpaRepository<Session, UUID>, Sess
                     LEFT JOIN s.user u
                     LEFT JOIN u.parentAdmin parentAdmin
                     WHERE (:userId IS NULL OR s.user.id = :userId)
-                        AND (:canReadAll = true OR parentAdmin.id = :actorUserId)
+                        AND (:canReadAll = true OR parentAdmin.id = :actorUserId OR s.user.id = :actorUserId)
                         AND s.createdAt >= :startedFrom
                         AND s.createdAt <= :startedTo
                         AND (

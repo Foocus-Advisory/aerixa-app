@@ -19,6 +19,8 @@ public interface AcquisitionChannelJpaRepository extends JpaRepository<Acquisiti
 
     Optional<AcquisitionChannel> findByIdAndEstablishmentId(UUID id, UUID establishmentId);
 
+    Optional<AcquisitionChannel> findByEstablishmentIdAndCodeIgnoreCase(UUID establishmentId, String code);
+
     boolean existsByEstablishmentIdAndCodeIgnoreCase(UUID establishmentId, String code);
 
     @Modifying

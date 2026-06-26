@@ -13,8 +13,10 @@ import com.aerixa.app.application.auth.dto.UserImportResultResponse;
 import com.aerixa.app.application.auth.dto.UserOptionResponse;
 import com.aerixa.app.application.auth.dto.UserResponse;
 import com.aerixa.app.application.auth.dto.UserStatusStatsResponse;
+import com.aerixa.app.application.auth.dto.OperatorEstablishmentAssignmentResponse;
 import com.aerixa.app.application.auth.service.ProfileLocationService;
 import com.aerixa.app.application.auth.service.UserManagementService;
+import com.aerixa.app.application.auth.service.OperatorEstablishmentAssignmentService;
 import com.aerixa.app.infrastructure.api.ApiSuccessResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -45,6 +47,7 @@ public class UsersController {
 
     private final UserManagementService userManagementService;
     private final ProfileLocationService profileLocationService;
+    private final OperatorEstablishmentAssignmentService operatorEstablishmentAssignmentService;
 
     @GetMapping
     @PreAuthorize("hasAnyAuthority('users:read_all', 'users:read_children')")
@@ -212,6 +215,39 @@ public class UsersController {
         UUID actorId = currentUserId(authentication);
         UUID parentAdminId = request != null ? request.getParentAdminId() : null;
         return ResponseEntity.ok(userManagementService.assignParentAdmin(actorId, id, parentAdminId));
+    }
+
+    @GetMapping("/{id}/establishments")
+    @PreAuthorize("hasAuthority('operator_establishment_assignments:manage')")
+    @Operation(summary = "Lister les établissements affectés", description = "Liste les établissements affectés à un OPERATOR")
+    public ResponseEntity<List<OperatorEstablishmentAssignmentResponse>> listAssignedEstablishments(
+            @PathVariable UUID id,
+            Authentication authentication) {
+        UUID actorId = currentUserId(authentication);
+        return ResponseEntity.ok(operatorEstablishmentAssignmentService.listAssignedEstablishments(actorId, id));
+    }
+
+    @PutMapping("/{id}/establishments/{establishmentId}")
+    @PreAuthorize("hasAuthority('operator_establishment_assignments:manage')")
+    @Operation(summary = "Affecter un établissement", description = "Affecte un établissement à un OPERATOR")
+    public ResponseEntity<OperatorEstablishmentAssignmentResponse> assignEstablishment(
+            @PathVariable UUID id,
+            @PathVariable UUID establishmentId,
+            Authentication authentication) {
+        UUID actorId = currentUserId(authentication);
+        return ResponseEntity.ok(operatorEstablishmentAssignmentService.assignEstablishment(actorId, id, establishmentId));
+    }
+
+    @DeleteMapping("/{id}/establishments/{establishmentId}")
+    @PreAuthorize("hasAuthority('operator_establishment_assignments:manage')")
+    @Operation(summary = "Retirer un établissement", description = "Retire l'affectation d'un établissement à un OPERATOR")
+    public ResponseEntity<Void> unassignEstablishment(
+            @PathVariable UUID id,
+            @PathVariable UUID establishmentId,
+            Authentication authentication) {
+        UUID actorId = currentUserId(authentication);
+        operatorEstablishmentAssignmentService.unassignEstablishment(actorId, id, establishmentId);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping

@@ -9,16 +9,13 @@ import com.aerixa.app.application.configuration.dto.PipelineViewPreferenceRespon
 import com.aerixa.app.application.configuration.dto.UpdatePipelineViewPreferenceRequest;
 import com.aerixa.app.application.configuration.security.ConfigurationPermissionGuard;
 import com.aerixa.app.application.configuration.security.ConfigurationPermissions;
+import com.aerixa.app.application.configuration.security.EstablishmentAccessGuard;
 import com.aerixa.app.domain.auth.entity.User;
-import com.aerixa.app.domain.auth.exception.PermissionDeniedException;
 import com.aerixa.app.domain.auth.exception.UserNotFoundException;
 import com.aerixa.app.domain.auth.repository.UserRepository;
-import com.aerixa.app.domain.configuration.entity.Establishment;
 import com.aerixa.app.domain.configuration.entity.PipelineViewType;
 import com.aerixa.app.domain.configuration.entity.UserPipelineViewPreference;
-import com.aerixa.app.infrastructure.configuration.repository.EstablishmentJpaRepository;
 import com.aerixa.app.infrastructure.configuration.repository.UserPipelineViewPreferenceJpaRepository;
-import com.aerixa.app.infrastructure.error.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,10 +30,10 @@ public class UserPipelineViewPreferenceService {
     private static final UUID GLOBAL_SCOPE_ESTABLISHMENT_ID = UUID.fromString("00000000-0000-0000-0000-000000000000");
 
     private final UserPipelineViewPreferenceJpaRepository userPipelineViewPreferenceJpaRepository;
-    private final EstablishmentJpaRepository establishmentJpaRepository;
     private final UserRepository userRepository;
     private final ConfigurationPermissionGuard configurationPermissionGuard;
     private final ConfigurationAuditPublisher configurationAuditPublisher;
+    private final EstablishmentAccessGuard establishmentAccessGuard;
 
     @Transactional(readOnly = true)
     public PipelineViewPreferenceResponse read(UUID actorUserId, UUID establishmentId, String correlationId) {
@@ -98,11 +95,7 @@ public class UserPipelineViewPreferenceService {
     }
 
     private void assertEstablishmentAccess(User actor, UUID establishmentId) {
-        Establishment establishment = establishmentJpaRepository.findById(establishmentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Etablissement introuvable"));
-        if (!actor.hasRole("SUPER_ADMIN") && !actor.getId().equals(establishment.getCreatedByUserId())) {
-            throw new PermissionDeniedException("establishments:scope");
-        }
+        establishmentAccessGuard.assertAccess(actor, establishmentId);
     }
 
     private User actor(UUID actorUserId) {
