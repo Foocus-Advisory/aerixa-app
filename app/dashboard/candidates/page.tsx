@@ -16,10 +16,13 @@ import {
   RefreshCcw,
   Trash2,
   Upload,
+  UserCog,
 } from "lucide-react";
+import ReactCountryFlag from "react-country-flag";
 import { api, ApiError } from "@/lib/api";
 import { useDashboardStore } from "@/store/dashboard-store";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
+import { MobileSectionTabs } from "@/components/dashboard/mobile-section-tabs";
 import { buildPermissionSet, hasPermission } from "@/lib/permissions";
 import { useToast } from "@/components/ui/toast-provider";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -66,6 +69,7 @@ type CandidateFormState = {
   gender: CandidateGender;
   preferredWhatsappTarget: WhatsappTarget;
   observations: string;
+  assignedOperatorId: string;
 };
 
 const DEFAULT_PHONE_PREFIX = "+237";
@@ -90,6 +94,7 @@ const EMPTY_FORM: CandidateFormState = {
   gender: "UNSPECIFIED",
   preferredWhatsappTarget: "CANDIDATE",
   observations: "",
+  assignedOperatorId: "",
 };
 
 const GENDERS: CandidateGender[] = ["MALE", "FEMALE", "UNSPECIFIED"];
@@ -255,6 +260,10 @@ export default function CandidatesPage() {
   const [deleteTarget, setDeleteTarget] = useState<CandidateResponse | null>(null);
   const [deleteMode, setDeleteMode] = useState<"soft" | "hard">("soft");
 
+  const [assignOperatorDialogOpen, setAssignOperatorDialogOpen] = useState(false);
+  const [assignOperatorTarget, setAssignOperatorTarget] = useState<CandidateResponse | null>(null);
+  const [assignOperatorValue, setAssignOperatorValue] = useState("");
+
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importFileName, setImportFileName] = useState("");
   const [importHeaders, setImportHeaders] = useState<string[]>([]);
@@ -285,6 +294,20 @@ export default function CandidatesPage() {
     enabled: Boolean(accessToken),
   });
 
+  const permissionSet = useMemo(() => buildPermissionSet(currentUserQuery.data ?? null), [currentUserQuery.data]);
+  const canCreate = hasPermission(permissionSet, "candidates:create");
+  const canUpdate = hasPermission(permissionSet, "candidates:update");
+  const canDelete = hasPermission(permissionSet, "candidates:delete");
+  const canHardDelete = hasPermission(permissionSet, "candidates:hard_delete");
+  const canExport = hasPermission(permissionSet, "candidates:export");
+  const canImport = hasPermission(permissionSet, "candidates:import");
+  const canToggleStatus =
+    hasPermission(permissionSet, "candidates:activate") ||
+    hasPermission(permissionSet, "candidates:deactivate");
+  const canAssignOperator = hasPermission(permissionSet, "candidates:assign_operator");
+  const canReadAcquisitionChannels = hasPermission(permissionSet, "acquisition_channels:list");
+  const canReadEntryDiplomas = hasPermission(permissionSet, "entry_diplomas:list");
+
   const establishmentsQuery = useQuery({
     queryKey: ["config", "establishments", accessToken],
     queryFn: () => api.configuration.establishments.list(accessToken),
@@ -306,14 +329,36 @@ export default function CandidatesPage() {
   const acquisitionChannelsQuery = useQuery({
     queryKey: ["config", "acquisition-channels", accessToken, effectiveEstId],
     queryFn: () => api.configuration.acquisitionChannels.list(accessToken, effectiveEstId),
-    enabled: Boolean(accessToken && effectiveEstId),
+    enabled: Boolean(accessToken && effectiveEstId && canReadAcquisitionChannels),
   });
 
   const entryDiplomasQuery = useQuery({
     queryKey: ["config", "entry-diplomas", accessToken, effectiveEstId],
     queryFn: () => api.configuration.entryDiplomas.list(accessToken, effectiveEstId),
-    enabled: Boolean(accessToken && effectiveEstId),
+    enabled: Boolean(accessToken && effectiveEstId && canReadEntryDiplomas),
   });
+
+  const operatorsQuery = useQuery({
+    queryKey: ["config", "establishment-operators", accessToken, effectiveEstId],
+    queryFn: () => api.configuration.establishments.listOperators(accessToken, effectiveEstId),
+    enabled: Boolean(accessToken && effectiveEstId && canAssignOperator),
+  });
+
+  const operatorOptions = useMemo(
+    () =>
+      (operatorsQuery.data ?? []).map((op) => ({
+        value: op.operatorUserId,
+        label: op.operatorDisplayName,
+        keywords: [op.operatorDisplayName, op.operatorEmail],
+      })),
+    [operatorsQuery.data],
+  );
+
+  const operatorNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    (operatorsQuery.data ?? []).forEach((op) => map.set(op.operatorUserId, op.operatorDisplayName));
+    return map;
+  }, [operatorsQuery.data]);
 
   const acquisitionChannelOptions = useMemo(
     () =>
@@ -355,17 +400,6 @@ export default function CandidatesPage() {
 
   const items = useMemo(() => query.data ?? [], [query.data]);
 
-  const permissionSet = useMemo(() => buildPermissionSet(currentUserQuery.data ?? null), [currentUserQuery.data]);
-  const canCreate = hasPermission(permissionSet, "candidates:create");
-  const canUpdate = hasPermission(permissionSet, "candidates:update");
-  const canDelete = hasPermission(permissionSet, "candidates:delete");
-  const canHardDelete = hasPermission(permissionSet, "candidates:hard_delete");
-  const canExport = hasPermission(permissionSet, "candidates:export");
-  const canImport = hasPermission(permissionSet, "candidates:import");
-  const canToggleStatus =
-    hasPermission(permissionSet, "candidates:activate") ||
-    hasPermission(permissionSet, "candidates:deactivate");
-
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return items.filter((item) => {
@@ -401,6 +435,19 @@ export default function CandidatesPage() {
       api.candidates.update(accessToken, id, effectiveEstId, payload),
     onSuccess: async () => { await query.refetch(); setDialogOpen(false); setFormError(null); },
     onError: (err) => setFormError((err as Error).message),
+  });
+
+  const assignOperatorMutation = useMutation({
+    mutationFn: ({ id, assignedOperatorId }: { id: string; assignedOperatorId: string }) =>
+      api.candidates.update(accessToken, id, effectiveEstId, { assignedOperatorId }),
+    onSuccess: async () => {
+      await query.refetch();
+      toast({ variant: "success", title: locale === "fr" ? "Opérateur affecté" : "Operator assigned" });
+      setAssignOperatorDialogOpen(false);
+      setAssignOperatorTarget(null);
+      setAssignOperatorValue("");
+    },
+    onError: (err) => toast({ variant: "error", title: locale === "fr" ? "Affectation impossible" : "Unable to assign", description: (err as Error).message }),
   });
 
   const deleteMutation = useMutation({
@@ -545,10 +592,22 @@ export default function CandidatesPage() {
       gender: item.gender ?? "UNSPECIFIED",
       preferredWhatsappTarget: item.preferredWhatsappTarget,
       observations: item.observations ?? "",
+      assignedOperatorId: item.assignedOperatorId ?? "",
     });
     setFormError(null);
     setDialogMode("edit");
     setDialogOpen(true);
+  };
+
+  const openAssignOperatorDialog = (item: CandidateResponse) => {
+    setAssignOperatorTarget(item);
+    setAssignOperatorValue(item.assignedOperatorId ?? "");
+    setAssignOperatorDialogOpen(true);
+  };
+
+  const confirmAssignOperator = () => {
+    if (!assignOperatorTarget || !assignOperatorValue) return;
+    assignOperatorMutation.mutate({ id: assignOperatorTarget.id, assignedOperatorId: assignOperatorValue });
   };
 
   const submitDialog = () => {
@@ -595,7 +654,11 @@ export default function CandidatesPage() {
     if (dialogMode === "create") {
       createMutation.mutate({ ...basePayload, establishmentId: effectiveEstId } as CreateCandidateRequest);
     } else {
-      updateMutation.mutate({ id: focusedItem!.id, payload: basePayload });
+      const updatePayload: UpdateCandidateRequest = { ...basePayload };
+      if (canAssignOperator && formState.assignedOperatorId) {
+        updatePayload.assignedOperatorId = formState.assignedOperatorId;
+      }
+      updateMutation.mutate({ id: focusedItem!.id, payload: updatePayload });
     }
   };
 
@@ -636,6 +699,7 @@ export default function CandidatesPage() {
     colDiploma: locale === "fr" ? "Diplôme d'entrée" : "Entry diploma",
     colGender: locale === "fr" ? "Genre" : "Gender",
     colStatus: locale === "fr" ? "Statut" : "Status",
+    colAssignedOperator: locale === "fr" ? "Opérateur assigné" : "Assigned operator",
     colCreatedBy: locale === "fr" ? "Créé par" : "Created by",
     colUpdatedBy: locale === "fr" ? "Modifié par" : "Updated by",
     colActions: locale === "fr" ? "Actions" : "Actions",
@@ -694,6 +758,8 @@ export default function CandidatesPage() {
               { label: locale === "fr" ? "Liste des candidats" : "Candidates list" },
             ]}
           />
+
+          <MobileSectionTabs permissionSet={permissionSet} />
           <div className="grid gap-6">
             {/* Section card */}
             <Card className="border-border/60 bg-card/70 shadow-sm">
@@ -894,6 +960,7 @@ export default function CandidatesPage() {
                         <th className="hidden px-3 py-3 lg:table-cell">{t.colChannel}</th>
                         <th className="hidden px-3 py-3 xl:table-cell">{t.colDiploma}</th>
                         <th className="px-3 py-3">{t.colGender}</th>
+                        {canAssignOperator && <th className="hidden px-3 py-3 lg:table-cell">{t.colAssignedOperator}</th>}
                         <th className="hidden px-3 py-3 lg:table-cell">{t.colCreatedBy}</th>
                         <th className="hidden px-3 py-3 xl:table-cell">{t.colUpdatedBy}</th>
                         <th className="px-3 py-3">{t.colStatus}</th>
@@ -902,11 +969,11 @@ export default function CandidatesPage() {
                     </thead>
                     <tbody>
                       {query.isLoading ? (
-                        <tr><td colSpan={10} className="px-3 py-8 text-center text-muted-foreground">{locale === "fr" ? "Chargement…" : "Loading…"}</td></tr>
+                        <tr><td colSpan={canAssignOperator ? 10 : 9} className="px-3 py-8 text-center text-muted-foreground">{locale === "fr" ? "Chargement…" : "Loading…"}</td></tr>
                       ) : query.isError ? (
-                        <tr><td colSpan={10} className="px-3 py-8 text-center text-destructive">{t.loadError}</td></tr>
+                        <tr><td colSpan={canAssignOperator ? 10 : 9} className="px-3 py-8 text-center text-destructive">{t.loadError}</td></tr>
                       ) : pageItems.length === 0 ? (
-                        <tr><td colSpan={10} className="px-3 py-8 text-center text-muted-foreground">{t.noData}</td></tr>
+                        <tr><td colSpan={canAssignOperator ? 10 : 9} className="px-3 py-8 text-center text-muted-foreground">{t.noData}</td></tr>
                       ) : pageItems.map((item) => (
                         <tr key={item.id} className={`border-t border-border/50 transition-colors hover:bg-muted/30 ${selectedIds.has(item.id) ? "bg-primary/5" : ""}`}>
                           <td className="px-3 py-2.5">
@@ -928,6 +995,13 @@ export default function CandidatesPage() {
                           <td className="px-3 py-2.5">
                             <Badge variant="outline">{genderLabel(item.gender)}</Badge>
                           </td>
+                          {canAssignOperator && (
+                            <td className="hidden px-3 py-2.5 lg:table-cell">
+                              <span className="text-xs text-muted-foreground">
+                                {item.assignedOperatorId ? operatorNameById.get(item.assignedOperatorId) ?? "—" : "—"}
+                              </span>
+                            </td>
+                          )}
                           <td className="hidden px-3 py-2.5 lg:table-cell">
                             <span className="text-xs text-muted-foreground">{item.createdByLabel ?? "—"}</span>
                           </td>
@@ -950,6 +1024,11 @@ export default function CandidatesPage() {
                                   label: t.tooltipEdit,
                                   icon: Pencil,
                                   onClick: () => openEditDialog(item),
+                                }] : []),
+                                ...(canAssignOperator ? [{
+                                  label: locale === "fr" ? "Affecter un opérateur" : "Assign operator",
+                                  icon: UserCog,
+                                  onClick: () => openAssignOperatorDialog(item),
                                 }] : []),
                                 ...(canToggleStatus ? [{
                                   label: item.status === "ACTIVE" ? t.tooltipDeactivate : t.tooltipActivate,
@@ -1013,6 +1092,11 @@ export default function CandidatesPage() {
                             <Pencil className="mr-1 h-3 w-3" />{t.tooltipEdit}
                           </Button>
                         )}
+                        {canAssignOperator && (
+                          <Button size="sm" variant="outline" className="h-8 rounded-lg px-2 text-xs" onClick={() => openAssignOperatorDialog(item)}>
+                            <UserCog className="mr-1 h-3 w-3" />{locale === "fr" ? "Opérateur" : "Operator"}
+                          </Button>
+                        )}
                         {canToggleStatus && (
                           <Button size="sm" variant="outline" className="h-8 rounded-lg px-2 text-xs" onClick={() => item.status === "ACTIVE" ? deactivateMutation.mutate(item.id) : activateMutation.mutate(item.id)}>
                             <Power className="mr-1 h-3 w-3" />{item.status === "ACTIVE" ? t.tooltipDeactivate : t.tooltipActivate}
@@ -1072,7 +1156,12 @@ export default function CandidatesPage() {
                 <label className="text-sm font-medium">{locale === "fr" ? "Téléphone candidat" : "Candidate phone"} *</label>
                 <div className="flex gap-2">
                   <SearchableSelect
-                    options={phonePrefixes.map((prefix) => ({ value: prefix.value, label: prefix.label, keywords: prefix.keywords }))}
+                    options={phonePrefixes.map((prefix) => ({
+                      value: prefix.value,
+                      label: prefix.label,
+                      keywords: prefix.keywords,
+                      icon: <ReactCountryFlag countryCode={prefix.countryCode} svg style={{ width: "1.1em", height: "1.1em" }} />,
+                    }))}
                     value={formState.candidatePhonePrefix}
                     onValueChange={(v) => setFormState((s) => ({ ...s, candidatePhonePrefix: v }))}
                     placeholder={locale === "fr" ? "Indicatif" : "Prefix"}
@@ -1096,7 +1185,12 @@ export default function CandidatesPage() {
                 <label className="text-sm font-medium">{locale === "fr" ? "Téléphone parent 1" : "Parent phone 1"}</label>
                 <div className="flex gap-2">
                   <SearchableSelect
-                    options={phonePrefixes.map((prefix) => ({ value: prefix.value, label: prefix.label, keywords: prefix.keywords }))}
+                    options={phonePrefixes.map((prefix) => ({
+                      value: prefix.value,
+                      label: prefix.label,
+                      keywords: prefix.keywords,
+                      icon: <ReactCountryFlag countryCode={prefix.countryCode} svg style={{ width: "1.1em", height: "1.1em" }} />,
+                    }))}
                     value={formState.parentPhone1Prefix}
                     onValueChange={(v) => setFormState((s) => ({ ...s, parentPhone1Prefix: v }))}
                     placeholder={locale === "fr" ? "Indicatif" : "Prefix"}
@@ -1114,7 +1208,12 @@ export default function CandidatesPage() {
                 <label className="text-sm font-medium">{locale === "fr" ? "Téléphone parent 2" : "Parent phone 2"}</label>
                 <div className="flex gap-2">
                   <SearchableSelect
-                    options={phonePrefixes.map((prefix) => ({ value: prefix.value, label: prefix.label, keywords: prefix.keywords }))}
+                    options={phonePrefixes.map((prefix) => ({
+                      value: prefix.value,
+                      label: prefix.label,
+                      keywords: prefix.keywords,
+                      icon: <ReactCountryFlag countryCode={prefix.countryCode} svg style={{ width: "1.1em", height: "1.1em" }} />,
+                    }))}
                     value={formState.parentPhone2Prefix}
                     onValueChange={(v) => setFormState((s) => ({ ...s, parentPhone2Prefix: v }))}
                     placeholder={locale === "fr" ? "Indicatif" : "Prefix"}
@@ -1229,6 +1328,19 @@ export default function CandidatesPage() {
               <label className="text-sm font-medium">{locale === "fr" ? "Adresse" : "Address"}</label>
               <Input value={formState.addressLine} onChange={(e) => setFormState((s) => ({ ...s, addressLine: e.target.value }))} />
             </div>
+            {dialogMode === "edit" && canAssignOperator && (
+              <div className="min-w-0 space-y-2">
+                <label className="text-sm font-medium">{locale === "fr" ? "Opérateur affecté" : "Assigned operator"}</label>
+                <SearchableSelect
+                  options={operatorOptions}
+                  value={formState.assignedOperatorId}
+                  onValueChange={(v) => setFormState((s) => ({ ...s, assignedOperatorId: v }))}
+                  placeholder={locale === "fr" ? "Aucun opérateur affecté" : "No operator assigned"}
+                  searchPlaceholder={locale === "fr" ? "Rechercher..." : "Search..."}
+                  className="w-full"
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <label className="text-sm font-medium">Observations</label>
               <textarea
@@ -1295,6 +1407,54 @@ export default function CandidatesPage() {
               disabled={deleteMutation.isPending || hardDeleteMutation.isPending}
             >
               {(deleteMutation.isPending || hardDeleteMutation.isPending) ? t.deleting : t.deleteConfirm}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign operator dialog */}
+      <Dialog
+        open={assignOperatorDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAssignOperatorDialogOpen(false);
+            setAssignOperatorTarget(null);
+            setAssignOperatorValue("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{locale === "fr" ? "Affecter un opérateur" : "Assign operator"}</DialogTitle>
+            <DialogDescription>
+              {assignOperatorTarget && (
+                <span className="mt-1 block font-medium text-foreground">
+                  {assignOperatorTarget.firstName} {assignOperatorTarget.lastName}
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <SearchableSelect
+              options={operatorOptions}
+              value={assignOperatorValue}
+              onValueChange={setAssignOperatorValue}
+              placeholder={locale === "fr" ? "Sélectionner un opérateur" : "Select an operator"}
+              searchPlaceholder={locale === "fr" ? "Rechercher..." : "Search..."}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setAssignOperatorDialogOpen(false); setAssignOperatorTarget(null); setAssignOperatorValue(""); }}
+              disabled={assignOperatorMutation.isPending}
+            >
+              {t.cancel}
+            </Button>
+            <Button onClick={confirmAssignOperator} disabled={!assignOperatorValue || assignOperatorMutation.isPending}>
+              {assignOperatorMutation.isPending
+                ? (locale === "fr" ? "Affectation..." : "Assigning...")
+                : (locale === "fr" ? "Affecter" : "Assign")}
             </Button>
           </DialogFooter>
         </DialogContent>

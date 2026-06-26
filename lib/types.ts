@@ -93,6 +93,16 @@ export interface AssignParentAdminRequest {
   parentAdminId: string;
 }
 
+export interface OperatorEstablishmentAssignmentResponse {
+  id: string;
+  operatorUserId: string;
+  establishmentId: string;
+  establishmentName: string | null;
+  establishmentCode: string | null;
+  assignedByUserId: string;
+  assignedAt: string;
+}
+
 export interface UpdateProfileRequest {
   username?: string;
   firstName?: string;
@@ -516,6 +526,29 @@ export interface UpdatePipelineViewPreferenceRequest {
   preferredView: PipelineViewType;
 }
 
+export type WhatsappConnectionStatus = "NOT_CONFIGURED" | "PENDING_VERIFICATION" | "ACTIVE" | "ERROR";
+
+export interface EstablishmentWhatsappConfigResponse {
+  id: string;
+  establishmentId: string;
+  wabaId?: string;
+  phoneNumberId?: string;
+  displayPhoneNumber?: string;
+  accessTokenConfigured: boolean;
+  webhookVerifyToken: string;
+  connectionStatus: WhatsappConnectionStatus;
+  lastSyncedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpdateEstablishmentWhatsappConfigRequest {
+  wabaId?: string;
+  phoneNumberId?: string;
+  displayPhoneNumber?: string;
+  accessToken?: string;
+}
+
 export interface CreateEntryDiplomaRequest {
   establishmentId: string;
   code?: string;
@@ -638,6 +671,7 @@ export interface CandidateResponse {
   observations?: string;
   preferredWhatsappTarget: WhatsappTarget;
   status: CandidateStatus;
+  assignedOperatorId?: string;
   createdByUserId?: string;
   createdByLabel?: string;
   updatedByUserId?: string;
@@ -683,6 +717,26 @@ export interface UpdateCandidateRequest {
   gender?: CandidateGender;
   observations?: string;
   preferredWhatsappTarget?: WhatsappTarget;
+  assignedOperatorId?: string;
+}
+
+export interface AssignedOperatorResponse {
+  operatorUserId: string;
+  operatorEmail: string;
+  operatorDisplayName: string;
+}
+
+export interface OperatorPerformanceResponse {
+  operatorUserId: string;
+  operatorEmail: string;
+  operatorDisplayName: string;
+  candidatesCount: number;
+  activeCandidatesCount: number;
+  applicationsCount: number;
+  applicationsInProgressCount: number;
+  applicationsAcceptedCount: number;
+  applicationsRejectedCount: number;
+  conversionRate?: number;
 }
 
 export interface CandidateImportResultResponse {
@@ -699,4 +753,150 @@ export interface EligibleProgramTrackLevelResponse {
   academicLevelId: string;
   academicLevelLabel: string;
   academicLevelRankOrder: number;
+}
+
+export type CandidateApplicationStatus = "IN_PROGRESS" | "ACCEPTED" | "REJECTED";
+
+export type CandidateApplicationClosedReason = "MANUAL" | "AUTO_OTHER_OFFER_ACCEPTED";
+
+export type CandidateApplicationTransitionType = "MANUAL" | "AUTO_INITIAL" | "AUTO_EXCLUSIVITY";
+
+export interface CandidateApplicationResponse {
+  id: string;
+  establishmentId: string;
+  candidateId: string;
+  programTrackLevelId: string;
+  currentStageId: string;
+  status: CandidateApplicationStatus;
+  assignedOperatorId?: string;
+  closedAt?: string;
+  closedReason?: CandidateApplicationClosedReason;
+  createdAt: string;
+  updatedAt: string;
+  createdByUserId?: string;
+  createdByLabel?: string;
+  updatedByUserId?: string;
+  updatedByLabel?: string;
+}
+
+export interface CandidateApplicationStageHistoryResponse {
+  id: string;
+  candidateApplicationId: string;
+  fromStageId?: string;
+  toStageId: string;
+  transitionType: CandidateApplicationTransitionType;
+  noteId?: string;
+  actorUserId?: string;
+  occurredAt: string;
+}
+
+export interface CreateCandidateApplicationRequest {
+  establishmentId: string;
+  programTrackLevelId: string;
+  assignedOperatorId?: string;
+}
+
+export interface TransitionCandidateApplicationRequest {
+  establishmentId: string;
+  toStageId: string;
+  note: string;
+}
+
+export type CandidateNoteType = "FREE_TEXT" | "STAGE_TRANSITION" | "SYSTEM";
+
+export interface CandidateNoteAttachmentResponse {
+  id: string;
+  candidateNoteId: string;
+  contentType: string;
+  filename: string;
+  fileSize: number;
+  uploadedByUserId?: string;
+  uploadedByLabel?: string;
+  createdAt: string;
+}
+
+export interface CandidateNoteResponse {
+  id: string;
+  establishmentId: string;
+  candidateId: string;
+  candidateApplicationId?: string;
+  type: CandidateNoteType;
+  content: string;
+  authorUserId?: string;
+  authorLabel?: string;
+  createdAt: string;
+  updatedAt: string;
+  edited: boolean;
+  editableByCurrentUser: boolean;
+  deletableByCurrentUser: boolean;
+  attachments: CandidateNoteAttachmentResponse[];
+}
+
+export interface CreateCandidateNoteRequest {
+  establishmentId: string;
+  candidateApplicationId?: string;
+  content: string;
+}
+
+export interface UpdateCandidateNoteRequest {
+  content: string;
+}
+
+export interface CandidateApplicationAuditEntryResponse {
+  id: string;
+  action: string;
+  outcome?: string;
+  entityType?: string;
+  entityId?: string;
+  actorId?: string;
+  actorEmail?: string;
+  timestamp: string;
+  reasonCode?: string;
+  errorMessage?: string;
+  details?: string;
+}
+
+export type ConversationTargetPhoneOwner = "PARENT_1" | "PARENT_2" | "CANDIDATE";
+
+export type MessageDirection = "OUTBOUND" | "INBOUND";
+
+export type MessageType = "TEXT" | "TEMPLATE" | "MEDIA" | "SYSTEM";
+
+export type MessageDeliveryStatus = "PENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED";
+
+export interface CandidateConversationResponse {
+  id: string;
+  establishmentId: string;
+  candidateId?: string;
+  targetPhoneNumber: string;
+  targetPhoneOwner: ConversationTargetPhoneOwner;
+  lastInboundAt?: string;
+  lastOutboundAt?: string;
+  withinMessagingWindow: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CandidateConversationMessageResponse {
+  id: string;
+  conversationId: string;
+  direction: MessageDirection;
+  senderUserId?: string;
+  whatsappMessageId?: string;
+  messageType: MessageType;
+  templateName?: string;
+  content?: string;
+  mediaUrl?: string;
+  deliveryStatus: MessageDeliveryStatus;
+  occurredAt: string;
+}
+
+export interface CreateCandidateConversationRequest {
+  establishmentId: string;
+  targetPhoneOwner: ConversationTargetPhoneOwner;
+}
+
+export interface SendCandidateConversationMessageRequest {
+  content?: string;
+  templateName?: string;
 }

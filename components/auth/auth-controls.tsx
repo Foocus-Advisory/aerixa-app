@@ -1,9 +1,12 @@
 "use client";
 
-import { Globe, Moon, Sun } from "lucide-react";
+import { Moon, Sun } from "lucide-react";
+import ReactCountryFlag from "react-country-flag";
 import { dictionaries } from "@/lib/i18n";
 import { useDashboardStore } from "@/store/dashboard-store";
 import { Button } from "@/components/ui/button";
+
+const localeFlags = { fr: "FR", en: "GB" } as const;
 
 export function AuthControls() {
   const { locale, setLocale, theme, setTheme } = useDashboardStore();
@@ -17,7 +20,7 @@ export function AuthControls() {
         className="h-8 rounded-full px-2 text-xs text-muted-foreground"
         onClick={() => setLocale(locale === "fr" ? "en" : "fr")}
       >
-        <Globe className="h-3.5 w-3.5" />
+        <ReactCountryFlag countryCode={localeFlags[locale]} svg style={{ width: "1em", height: "1em" }} />
         {locale.toUpperCase()}
       </Button>
       <Button

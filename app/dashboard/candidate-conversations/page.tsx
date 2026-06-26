@@ -7,6 +7,7 @@ import { MessageCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import { useDashboardStore } from "@/store/dashboard-store";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
+import { MobileSectionTabs } from "@/components/dashboard/mobile-section-tabs";
 import { buildPermissionSet, canAccessTab } from "@/lib/permissions";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AdminTopBar } from "@/components/dashboard/admin-top-bar";
@@ -58,6 +59,8 @@ export default function CandidateConversationsPage() {
               { label: locale === "fr" ? "Conversations WhatsApp" : "WhatsApp conversations" },
             ]}
           />
+
+          <MobileSectionTabs permissionSet={permissionSet} />
 
           <div className="grid gap-6">
             <Card className="border-border/60 bg-card/70 shadow-sm">

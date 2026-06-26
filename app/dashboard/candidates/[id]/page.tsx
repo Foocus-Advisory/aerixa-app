@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Contact, Pencil, Power, Trash2 } from "lucide-react";
+import { ArrowLeft, Contact, MessageCircle, Pencil, Power, Trash2, User, Workflow } from "lucide-react";
 import { api } from "@/lib/api";
 import { useDashboardStore } from "@/store/dashboard-store";
 import { buildPermissionSet, hasPermission } from "@/lib/permissions";
@@ -13,11 +13,15 @@ import { AdminTopBar } from "@/components/dashboard/admin-top-bar";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
+import { MobileSectionTabs } from "@/components/dashboard/mobile-section-tabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { isTokenExpired } from "@/lib/jwt-utils";
 import { COUNTRIES_BY_CODE } from "@/lib/countries";
 import type { CandidateGender, WhatsappTarget } from "@/lib/types";
+import { ApplicationsTab } from "./applications-tab";
+import { ConversationsTab } from "./conversations-tab";
 
 function formatDate(value: string, locale: "fr" | "en") {
   const date = new Date(value);
@@ -67,6 +71,10 @@ export default function CandidateDetailPage() {
     enabled: Boolean(accessToken),
   });
 
+  const permissionSet = useMemo(() => buildPermissionSet(currentUserQuery.data ?? null), [currentUserQuery.data]);
+  const canReadAcquisitionChannels = hasPermission(permissionSet, "acquisition_channels:list");
+  const canReadEntryDiplomas = hasPermission(permissionSet, "entry_diplomas:list");
+
   const candidateQuery = useQuery({
     queryKey: ["candidate", "detail", accessToken, establishmentId, candidateId],
     queryFn: () => api.candidates.get(accessToken, candidateId, establishmentId),
@@ -78,13 +86,13 @@ export default function CandidateDetailPage() {
   const acquisitionChannelsQuery = useQuery({
     queryKey: ["config", "acquisition-channels", accessToken, establishmentId],
     queryFn: () => api.configuration.acquisitionChannels.list(accessToken, establishmentId),
-    enabled: Boolean(accessToken && establishmentId),
+    enabled: Boolean(accessToken && establishmentId && canReadAcquisitionChannels),
   });
 
   const entryDiplomasQuery = useQuery({
     queryKey: ["config", "entry-diplomas", accessToken, establishmentId],
     queryFn: () => api.configuration.entryDiplomas.list(accessToken, establishmentId),
-    enabled: Boolean(accessToken && establishmentId),
+    enabled: Boolean(accessToken && establishmentId && canReadEntryDiplomas),
   });
 
   const acquisitionChannel = useMemo(
@@ -103,10 +111,24 @@ export default function CandidateDetailPage() {
     enabled: Boolean(accessToken && candidateId && establishmentId),
   });
 
-  const permissionSet = useMemo(() => buildPermissionSet(currentUserQuery.data ?? null), [currentUserQuery.data]);
+  const establishmentQuery = useQuery({
+    queryKey: ["candidate-detail", "establishment", accessToken, establishmentId],
+    queryFn: () => api.configuration.establishments.get(accessToken, establishmentId),
+    enabled: Boolean(accessToken && establishmentId),
+  });
+
   const canUpdate = hasPermission(permissionSet, "candidates:update");
   const canToggleStatus = hasPermission(permissionSet, "candidates:activate") || hasPermission(permissionSet, "candidates:deactivate");
   const canDelete = hasPermission(permissionSet, "candidates:delete");
+  const canCreateApplication = hasPermission(permissionSet, "candidate_applications:create");
+  const canTransitionApplication = hasPermission(permissionSet, "candidate_applications:transition");
+  const canViewApplicationHistory = hasPermission(permissionSet, "candidate_applications:history");
+  const isEstablishmentCreator = Boolean(
+    currentUserQuery.data?.id && establishmentQuery.data?.createdByUserId === currentUserQuery.data.id,
+  );
+  const canViewConversations = hasPermission(permissionSet, "candidate_conversations:list") && isEstablishmentCreator;
+  const canSendConversationMessage = hasPermission(permissionSet, "candidate_conversations:send_message") && isEstablishmentCreator;
+  const canCreateConversation = hasPermission(permissionSet, "candidate_conversations:create") && isEstablishmentCreator;
 
   const activateMutation = useMutation({
     mutationFn: () => api.candidates.activate(accessToken, candidateId, establishmentId),
@@ -151,13 +173,13 @@ export default function CandidateDetailPage() {
   }
 
   return (
-    <div className="admin-typography min-h-screen bg-background text-foreground">
+    <div className="admin-typography min-h-screen bg-background text-foreground md:h-screen md:overflow-hidden">
       <AppSidebar />
 
-      <div className="pb-20 md:pb-0 md:pl-22.5">
+      <div className="pb-20 md:flex md:h-full md:flex-col md:pb-0 md:pl-22.5">
         <AdminTopBar />
 
-        <main className="w-full space-y-5 px-3 py-4 pb-24 md:space-y-6 md:px-8 md:py-8 md:pb-8">
+        <main className="w-full space-y-5 px-3 py-4 pb-24 md:flex md:min-h-0 md:flex-1 md:flex-col md:space-y-6 md:px-8 md:py-8 md:pb-8">
           <Breadcrumbs
             items={[
               { label: locale === "fr" ? "Candidats" : "Candidates" },
@@ -168,6 +190,8 @@ export default function CandidateDetailPage() {
               for (let i = 0; i < stepsBack; i++) router.back();
             }}
           />
+
+          <MobileSectionTabs permissionSet={permissionSet} />
 
           {/* Header card */}
           <Card className="border-border/60 bg-card/70 shadow-sm">
@@ -267,6 +291,25 @@ export default function CandidateDetailPage() {
               <CardContent className="py-8 text-sm text-muted-foreground">{locale === "fr" ? "Candidat introuvable." : "Candidate not found."}</CardContent>
             </Card>
           ) : (
+            <Tabs defaultValue="personal" className="md:flex md:min-h-0 md:flex-1 md:flex-col">
+              <TabsList className="md:shrink-0">
+                <TabsTrigger value="personal">
+                  <User className="h-4 w-4" />
+                  {locale === "fr" ? "Informations personnelles" : "Personal information"}
+                </TabsTrigger>
+                <TabsTrigger value="applications">
+                  <Workflow className="h-4 w-4" />
+                  {locale === "fr" ? "Applications" : "Applications"}
+                </TabsTrigger>
+                {canViewConversations && (
+                  <TabsTrigger value="conversations">
+                    <MessageCircle className="h-4 w-4" />
+                    {locale === "fr" ? "Conversations" : "Conversations"}
+                  </TabsTrigger>
+                )}
+              </TabsList>
+
+              <TabsContent value="personal" className="md:min-h-0 md:flex-1 md:overflow-y-auto">
             <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
               <div className="grid gap-6">
                 {/* Contact panel */}
@@ -422,6 +465,34 @@ export default function CandidateDetailPage() {
                 </CardContent>
               </Card>
             </div>
+              </TabsContent>
+
+              <TabsContent value="applications" className="md:min-h-0 md:flex-1 md:overflow-y-auto">
+                <ApplicationsTab
+                  accessToken={accessToken}
+                  locale={locale}
+                  candidateId={candidateId}
+                  establishmentId={establishmentId}
+                  canCreate={canCreateApplication}
+                  canTransition={canTransitionApplication}
+                  canViewHistory={canViewApplicationHistory}
+                />
+              </TabsContent>
+
+              {canViewConversations && (
+                <TabsContent value="conversations" className="md:min-h-0 md:flex-1 md:overflow-y-auto">
+                  <ConversationsTab
+                    accessToken={accessToken}
+                    locale={locale}
+                    candidateId={candidateId}
+                    establishmentId={establishmentId}
+                    candidate={candidate}
+                    canSendMessage={canSendConversationMessage}
+                    canCreateConversation={canCreateConversation}
+                  />
+                </TabsContent>
+              )}
+            </Tabs>
           )}
         </main>
       </div>

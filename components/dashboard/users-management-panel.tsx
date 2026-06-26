@@ -21,9 +21,11 @@ import {
   UserX,
 } from "lucide-react";
 import * as XLSX from "xlsx";
+import ReactCountryFlag from "react-country-flag";
 import { api, ApiError } from "@/lib/api";
 import type { CreateUserRequest, UpdateUserRequest, UserResponse } from "@/lib/types";
 import { dictionaries, type Locale } from "@/lib/i18n";
+import { phonePrefixes } from "@/lib/phone-prefixes";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -91,18 +93,6 @@ const IMPORT_FIELD_ORDER: ImportFieldKey[] = [
   "roles",
   "status",
 ];
-
-const phonePrefixes = [
-  { label: "🇨🇲 +237", value: "+237", keywords: ["cameroun", "cameroon", "cm", "+237"] },
-  { label: "🇫🇷 +33", value: "+33", keywords: ["france", "fr", "+33"] },
-  { label: "🇧🇪 +32", value: "+32", keywords: ["belgique", "belgium", "be", "+32"] },
-  { label: "🇨🇦 +1", value: "+1", keywords: ["canada", "ca", "+1"] },
-  { label: "🇬🇧 +44", value: "+44", keywords: ["royaume-uni", "uk", "gb", "+44"] },
-  { label: "🇨🇮 +225", value: "+225", keywords: ["cote d'ivoire", "ci", "+225"] },
-  { label: "🇸🇳 +221", value: "+221", keywords: ["senegal", "sn", "+221"] },
-  { label: "🇩🇿 +213", value: "+213", keywords: ["algerie", "algeria", "dz", "+213"] },
-  { label: "🇲🇦 +212", value: "+212", keywords: ["maroc", "morocco", "ma", "+212"] },
-] as const;
 
 // Component to render user avatar with profile photo fallback
 type UserAvatarCellProps = {
@@ -390,6 +380,7 @@ export function UsersManagementPanel({ accessToken, locale, onLog, permissionSet
   const canRevokeUserSessions = hasPermission(permissions, "users:revoke_sessions");
   const canResetUserPassword = hasPermission(permissions, "users:reset_password");
   const canAssignParent = hasPermission(permissions, "users:assign_parent");
+  const canManageOperatorEstablishments = hasPermission(permissions, "operator_establishment_assignments:manage");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editUserId, setEditUserId] = useState<string>("");
@@ -450,6 +441,9 @@ export function UsersManagementPanel({ accessToken, locale, onLog, permissionSet
   const [assignParentValue, setAssignParentValue] = useState("");
   const [viewUserDialogOpen, setViewUserDialogOpen] = useState(false);
   const [viewUser, setViewUser] = useState<UserResponse | null>(null);
+  const [establishmentsDialogOpen, setEstablishmentsDialogOpen] = useState(false);
+  const [establishmentsTargetId, setEstablishmentsTargetId] = useState("");
+  const [establishmentsTargetEmail, setEstablishmentsTargetEmail] = useState("");
 
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -469,6 +463,18 @@ export function UsersManagementPanel({ accessToken, locale, onLog, permissionSet
     queryKey: ["users", "admins", accessToken],
     queryFn: () => api.users.list(accessToken, 0, 200, "ALL"),
     enabled: Boolean(accessToken && canReadUsers) && (createDialogOpen || assignParentDialogOpen),
+  });
+
+  const establishmentsQuery = useQuery({
+    queryKey: ["establishments", accessToken],
+    queryFn: () => api.configuration.establishments.list(accessToken),
+    enabled: Boolean(accessToken && canManageOperatorEstablishments) && establishmentsDialogOpen,
+  });
+
+  const assignedEstablishmentsQuery = useQuery({
+    queryKey: ["users", "establishments", accessToken, establishmentsTargetId],
+    queryFn: () => api.users.listAssignedEstablishments(accessToken, establishmentsTargetId),
+    enabled: Boolean(accessToken && canManageOperatorEstablishments && establishmentsTargetId) && establishmentsDialogOpen,
   });
 
   const toggleStatusMutation = useMutation({
@@ -669,6 +675,38 @@ export function UsersManagementPanel({ accessToken, locale, onLog, permissionSet
       toast({
         variant: "error",
         title: locale === "fr" ? "Affectation parent impossible" : "Unable to assign parent",
+        description: (error as Error).message,
+      });
+    },
+  });
+
+  const assignEstablishmentMutation = useMutation({
+    mutationFn: ({ id, establishmentId }: { id: string; establishmentId: string }) =>
+      api.users.assignEstablishment(accessToken, id, establishmentId),
+    onSuccess: async () => {
+      await assignedEstablishmentsQuery.refetch();
+      onLog(`ASSIGN ESTABLISHMENT OK: ${establishmentsTargetEmail}`);
+    },
+    onError: (error) => {
+      toast({
+        variant: "error",
+        title: locale === "fr" ? "Affectation impossible" : "Unable to assign establishment",
+        description: (error as Error).message,
+      });
+    },
+  });
+
+  const unassignEstablishmentMutation = useMutation({
+    mutationFn: ({ id, establishmentId }: { id: string; establishmentId: string }) =>
+      api.users.unassignEstablishment(accessToken, id, establishmentId),
+    onSuccess: async () => {
+      await assignedEstablishmentsQuery.refetch();
+      onLog(`UNASSIGN ESTABLISHMENT OK: ${establishmentsTargetEmail}`);
+    },
+    onError: (error) => {
+      toast({
+        variant: "error",
+        title: locale === "fr" ? "Retrait impossible" : "Unable to unassign establishment",
         description: (error as Error).message,
       });
     },
@@ -1055,6 +1093,23 @@ export function UsersManagementPanel({ accessToken, locale, onLog, permissionSet
     setAssignParentDialogOpen(true);
   };
 
+  const openEstablishmentsDialog = (user: UserResponse) => {
+    setEstablishmentsTargetId(user.id);
+    setEstablishmentsTargetEmail(user.email);
+    setEstablishmentsDialogOpen(true);
+  };
+
+  const toggleEstablishmentAssignment = (establishmentId: string, isAssigned: boolean) => {
+    if (!establishmentsTargetId) {
+      return;
+    }
+    if (isAssigned) {
+      unassignEstablishmentMutation.mutate({ id: establishmentsTargetId, establishmentId });
+    } else {
+      assignEstablishmentMutation.mutate({ id: establishmentsTargetId, establishmentId });
+    }
+  };
+
   const confirmAssignRole = () => {
     if (!assignRoleTargetId || !assignRoleValue) {
       return;
@@ -1221,7 +1276,12 @@ export function UsersManagementPanel({ accessToken, locale, onLog, permissionSet
                 <label className="text-sm font-medium text-foreground">{t.usersLabelPhone}</label>
                 <div className="grid gap-2 sm:grid-cols-[1fr_1.4fr]">
                   <SearchableSelect
-                    options={phonePrefixes.map((item) => ({ label: item.label, value: item.value, keywords: [...item.keywords] }))}
+                    options={phonePrefixes.map((item) => ({
+                      label: item.label,
+                      value: item.value,
+                      keywords: [...item.keywords],
+                      icon: <ReactCountryFlag countryCode={item.countryCode} svg style={{ width: "1.1em", height: "1.1em" }} />,
+                    }))}
                     value={createUserForm.phonePrefix}
                     onValueChange={(value) => setCreateUserForm((current) => ({ ...current, phonePrefix: value }))}
                     placeholder={t.authCountryCodePlaceholder}
@@ -1444,6 +1504,67 @@ export function UsersManagementPanel({ accessToken, locale, onLog, permissionSet
                 {assignParentMutation.isPending
                   ? (locale === "fr" ? "Affectation..." : "Assigning...")
                   : (locale === "fr" ? "Affecter" : "Assign")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={establishmentsDialogOpen} onOpenChange={setEstablishmentsDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{locale === "fr" ? "Gerer les etablissements" : "Manage establishments"}</DialogTitle>
+              <DialogDescription>
+                {locale === "fr"
+                  ? "Selectionnez les etablissements auxquels cet operateur doit avoir acces."
+                  : "Select the establishments this operator should have access to."}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="grid gap-3">
+              <div className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                {establishmentsTargetEmail}
+              </div>
+
+              <div className="max-h-72 overflow-y-auto rounded-lg border border-border/70">
+                {establishmentsQuery.isLoading || assignedEstablishmentsQuery.isLoading ? (
+                  <p className="px-3 py-4 text-sm text-muted-foreground">
+                    {locale === "fr" ? "Chargement..." : "Loading..."}
+                  </p>
+                ) : (establishmentsQuery.data ?? []).length === 0 ? (
+                  <p className="px-3 py-4 text-sm text-muted-foreground">
+                    {locale === "fr" ? "Aucun etablissement disponible." : "No establishment available."}
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-border/60">
+                    {(establishmentsQuery.data ?? []).map((establishment) => {
+                      const isAssigned = (assignedEstablishmentsQuery.data ?? []).some(
+                        (assignment) => assignment.establishmentId === establishment.id,
+                      );
+                      const isPending = assignEstablishmentMutation.isPending || unassignEstablishmentMutation.isPending;
+                      return (
+                        <li key={establishment.id} className="flex items-center justify-between px-3 py-2">
+                          <div>
+                            <p className="text-sm font-medium text-foreground">{establishment.name}</p>
+                            <p className="text-xs text-muted-foreground">{establishment.code}</p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={isAssigned}
+                            disabled={isPending}
+                            onChange={() => toggleEstablishmentAssignment(establishment.id, isAssigned)}
+                            className="h-4 w-4 rounded border-border"
+                          />
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEstablishmentsDialogOpen(false)}>
+                {t.usersCancel}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1880,6 +2001,12 @@ export function UsersManagementPanel({ accessToken, locale, onLog, permissionSet
                                   icon: UserCheck,
                                   onClick: () => openAssignParentDialog(user),
                                   disabled: !canAssignParent || !user.roles.includes("OPERATOR") || assignParentMutation.isPending,
+                                },
+                                {
+                                  label: locale === "fr" ? "Gerer les etablissements" : "Manage establishments",
+                                  icon: UserCheck,
+                                  onClick: () => openEstablishmentsDialog(user),
+                                  disabled: !canManageOperatorEstablishments || !user.roles.includes("OPERATOR"),
                                 },
                                 {
                                   label: t.usersActionDelete,

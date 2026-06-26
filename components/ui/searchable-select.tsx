@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -10,6 +10,7 @@ interface Option {
   value: string;
   description?: string;
   keywords?: string[];
+  icon?: ReactNode;
 }
 
 interface SearchableSelectProps {
@@ -101,7 +102,8 @@ export function SearchableSelect({
         onClick={() => setOpen((state) => !state)}
         className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        <span className="flex min-w-0 flex-1 items-baseline gap-1.5 truncate text-left">
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-left">
+          {selected?.icon ? <span className="shrink-0">{selected.icon}</span> : null}
           <span className="truncate">{selected?.label ?? placeholder}</span>
           {selected?.description ? (
             <span className="shrink-0 truncate text-xs text-muted-foreground">{selected.description}</span>
@@ -143,7 +145,10 @@ export function SearchableSelect({
                     }}
                     className="flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-2 text-left text-sm text-foreground hover:bg-muted"
                   >
-                    <span className="w-full truncate">{opt.label}</span>
+                    <span className="flex w-full items-center gap-1.5 truncate">
+                      {opt.icon ? <span className="shrink-0">{opt.icon}</span> : null}
+                      <span className="truncate">{opt.label}</span>
+                    </span>
                     {opt.description ? (
                       <span className="w-full truncate text-xs text-muted-foreground">{opt.description}</span>
                     ) : null}

@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Bell, Building2, ImagePlus, LayoutDashboard, Mail, MapPin, Pencil, Phone, Save, Trash2, Search } from "lucide-react";
+import { ArrowLeft, Building2, ImagePlus, LayoutDashboard, Mail, MapPin, Pencil, Phone, Save, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useDashboardStore } from "@/store/dashboard-store";
 import { AppSidebar } from "@/components/app-sidebar";
+import { AdminTopBar } from "@/components/dashboard/admin-top-bar";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,9 +16,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { COUNTRIES_BY_CODE, CITIES_BY_COUNTRY } from "@/lib/countries";
 import { phonePrefixes } from "@/lib/phone-prefixes";
 import type { UpdateEstablishmentRequest } from "@/lib/types";
+import { EntryDiplomasSection } from "@/components/dashboard/config-sections/entry-diplomas-section";
+import { AcademicLevelsSection } from "@/components/dashboard/config-sections/academic-levels-section";
+import { ProgramTracksSection } from "@/components/dashboard/config-sections/program-tracks-section";
+import { ProgramTrackLevelsSection } from "@/components/dashboard/config-sections/program-track-levels-section";
+import { AcquisitionChannelsSection } from "@/components/dashboard/config-sections/acquisition-channels-section";
+import { FunnelStagesSection } from "@/components/dashboard/config-sections/funnel-stages-section";
+import { FunnelStageTransitionsSection } from "@/components/dashboard/config-sections/funnel-stage-transitions-section";
+import { WhatsappConfigSection } from "@/components/dashboard/config-sections/whatsapp-config-section";
 
 function formatDate(value: string, locale: "fr" | "en") {
   const date = new Date(value);
@@ -74,8 +84,8 @@ export default function EstablishmentDetailsPage() {
   const { accessToken, locale, loadTokensFromStorage, setActiveTab } = useDashboardStore();
   const [isHydrated, setIsHydrated] = useState(false);
   const [logoUrl, setLogoUrl] = useState("");
-  const [profilePhotoUrl, setProfilePhotoUrl] = useState("");
   const [editOpen, setEditOpen] = useState(false);
+  const [configTab, setConfigTab] = useState("entry-diplomas");
   const [formError, setFormError] = useState<string | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState("");
@@ -120,19 +130,6 @@ export default function EstablishmentDetailsPage() {
     queryKey: ["establishment", "details", accessToken, establishmentId],
     queryFn: () => api.configuration.establishments.get(accessToken, establishmentId),
     enabled: Boolean(accessToken && establishmentId),
-  });
-
-  const currentUserQuery = useQuery({
-    queryKey: ["settings-profile", "establishment-detail", accessToken],
-    queryFn: () => api.users.getMe(accessToken),
-    enabled: Boolean(accessToken),
-  });
-
-  const unreadCountQuery = useQuery({
-    queryKey: ["notifications", "unread-count", accessToken],
-    queryFn: () => api.notifications.unreadCount(accessToken),
-    enabled: Boolean(accessToken),
-    refetchInterval: 30000,
   });
 
   useEffect(() => {
@@ -187,39 +184,6 @@ export default function EstablishmentDetailsPage() {
       }
     };
   }, [accessToken, establishmentQuery.data?.id]);
-
-  useEffect(() => {
-    const profilePhotoPath = currentUserQuery.data?.profilePhotoUrl?.trim() ?? "";
-    if (!accessToken || !profilePhotoPath) {
-      setProfilePhotoUrl("");
-      return;
-    }
-
-    let cancelled = false;
-    let objectUrl = "";
-
-    api.users
-      .getProfilePhotoBlob(accessToken, profilePhotoPath)
-      .then((blob) => {
-        if (cancelled) {
-          return;
-        }
-        objectUrl = URL.createObjectURL(blob);
-        setProfilePhotoUrl(objectUrl);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setProfilePhotoUrl("");
-        }
-      });
-
-    return () => {
-      cancelled = true;
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
-    };
-  }, [accessToken, currentUserQuery.data?.profilePhotoUrl]);
 
   useEffect(() => {
     if (!editOpen || !accessToken || !establishmentQuery.data?.id || logoFile) {
@@ -302,11 +266,6 @@ export default function EstablishmentDetailsPage() {
       };
 
   const establishment = establishmentQuery.data;
-  const unreadNotificationsCount = unreadCountQuery.data?.unreadCount ?? 0;
-  const connectedUserInitials = computeInitials(
-    `${currentUserQuery.data?.firstName ?? ""} ${currentUserQuery.data?.lastName ?? ""}`.trim(),
-    currentUserQuery.data?.email,
-  );
   const establishmentInitials = computeInitials(
     `${establishment?.shortName ?? ""} ${establishment?.name ?? ""}`.trim(),
     establishment?.code,
@@ -448,53 +407,7 @@ export default function EstablishmentDetailsPage() {
       <AppSidebar />
 
       <div className="pb-20 md:pb-0 md:pl-22.5">
-        <header className="sticky top-0 z-20 border-b border-border/50 bg-background/95 backdrop-blur">
-          <div className="flex h-16 items-center justify-between gap-3 px-4 md:px-8">
-            <AppTooltip content={locale === "fr" ? "Ouvrir la recherche globale" : "Open global search"}>
-              <button
-                type="button"
-                onClick={() => router.push("/dashboard")}
-                className="hidden h-10 min-w-70 items-center rounded-full border border-border/70 bg-card/50 px-4 text-sm text-muted-foreground transition hover:border-border md:flex"
-              >
-                <Search className="mr-2 h-4 w-4" />
-                <span>{locale === "fr" ? "Rechercher pages, actions..." : "Search pages, actions..."}</span>
-                <span className="ml-auto rounded border border-border/80 px-1.5 py-0.5 text-[11px]">Ctrl+K</span>
-              </button>
-            </AppTooltip>
-
-            <div className="ml-auto flex items-center gap-2">
-              <AppTooltip content={locale === "fr" ? "Voir les notifications" : "View notifications"}>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="relative h-9 w-9 rounded-full p-0 hover:bg-muted"
-                  onClick={() => router.push("/dashboard")}
-                  aria-label={locale === "fr" ? "Notifications" : "Notifications"}
-                >
-                  <Bell className="h-4 w-4" />
-                  {unreadNotificationsCount > 0 ? (
-                    <span className="absolute right-1.5 top-1.5 inline-flex h-2.5 w-2.5 rounded-full bg-destructive" />
-                  ) : null}
-                </Button>
-              </AppTooltip>
-
-              <AppTooltip content={locale === "fr" ? "Compte connecté" : "Connected account"}>
-                <button
-                  type="button"
-                  onClick={() => router.push("/dashboard")}
-                  className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-border/70 bg-muted"
-                  aria-label={currentUserQuery.data?.email ?? "profile"}
-                >
-                  {profilePhotoUrl ? (
-                    <img src={profilePhotoUrl} alt="avatar" className="h-full w-full object-cover" />
-                  ) : (
-                    <span className="text-xs font-semibold">{connectedUserInitials}</span>
-                  )}
-                </button>
-              </AppTooltip>
-            </div>
-          </div>
-        </header>
+        <AdminTopBar />
 
         <main className="w-full space-y-5 px-3 py-4 pb-24 md:space-y-6 md:px-8 md:py-8 md:pb-8">
           <Breadcrumbs items={breadcrumbItems} onNavigate={handleBreadcrumbNavigation} />
@@ -656,6 +569,58 @@ export default function EstablishmentDetailsPage() {
                 </CardContent>
               </Card>
             </div>
+          )}
+
+          {establishment && (
+            <Card className="border-border/60 bg-card/70">
+              <CardHeader>
+                <CardTitle>{locale === "fr" ? "Configuration métier" : "Business configuration"}</CardTitle>
+                <CardDescription>
+                  {locale === "fr"
+                    ? "Pilotez la configuration métier de cet établissement par onglet."
+                    : "Manage this establishment's business configuration by tab."}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Tabs value={configTab} onValueChange={setConfigTab}>
+                  <TabsList className="w-full md:w-auto">
+                    <TabsTrigger value="entry-diplomas">{locale === "fr" ? "Diplômes d'entrée" : "Entry diplomas"}</TabsTrigger>
+                    <TabsTrigger value="academic-levels">{locale === "fr" ? "Niveaux académiques" : "Academic levels"}</TabsTrigger>
+                    <TabsTrigger value="program-tracks">{locale === "fr" ? "Filières" : "Program tracks"}</TabsTrigger>
+                    <TabsTrigger value="program-track-levels">{locale === "fr" ? "Filière × niveau" : "Track × level"}</TabsTrigger>
+                    <TabsTrigger value="acquisition-channels">{locale === "fr" ? "Canaux d'acquisition" : "Acquisition channels"}</TabsTrigger>
+                    <TabsTrigger value="funnel-stages">{locale === "fr" ? "Étapes du funnel" : "Funnel stages"}</TabsTrigger>
+                    <TabsTrigger value="funnel-stage-transitions">{locale === "fr" ? "Transitions du funnel" : "Funnel transitions"}</TabsTrigger>
+                    <TabsTrigger value="whatsapp-config">{locale === "fr" ? "WhatsApp Business" : "WhatsApp Business"}</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="entry-diplomas">
+                    <EntryDiplomasSection accessToken={accessToken} locale={locale} establishmentId={establishmentId} />
+                  </TabsContent>
+                  <TabsContent value="academic-levels">
+                    <AcademicLevelsSection accessToken={accessToken} locale={locale} establishmentId={establishmentId} />
+                  </TabsContent>
+                  <TabsContent value="program-tracks">
+                    <ProgramTracksSection accessToken={accessToken} locale={locale} establishmentId={establishmentId} />
+                  </TabsContent>
+                  <TabsContent value="program-track-levels">
+                    <ProgramTrackLevelsSection accessToken={accessToken} locale={locale} establishmentId={establishmentId} />
+                  </TabsContent>
+                  <TabsContent value="acquisition-channels">
+                    <AcquisitionChannelsSection accessToken={accessToken} locale={locale} establishmentId={establishmentId} />
+                  </TabsContent>
+                  <TabsContent value="funnel-stages">
+                    <FunnelStagesSection accessToken={accessToken} locale={locale} establishmentId={establishmentId} />
+                  </TabsContent>
+                  <TabsContent value="funnel-stage-transitions">
+                    <FunnelStageTransitionsSection accessToken={accessToken} locale={locale} establishmentId={establishmentId} />
+                  </TabsContent>
+                  <TabsContent value="whatsapp-config">
+                    <WhatsappConfigSection accessToken={accessToken} locale={locale} establishmentId={establishmentId} />
+                  </TabsContent>
+                </Tabs>
+              </CardContent>
+            </Card>
           )}
         </main>
       </div>

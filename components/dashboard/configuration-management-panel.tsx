@@ -1,15 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Filter } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Filter, Power, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/components/ui/toast-provider";
 
 type ConfigurationManagementPanelProps = {
   accessToken: string;
@@ -18,13 +19,14 @@ type ConfigurationManagementPanelProps = {
 };
 
 export function ConfigurationManagementPanel({ accessToken, locale, onLog }: ConfigurationManagementPanelProps) {
-  const [selectedEstablishmentId, setSelectedEstablishmentId] = useState("");
+  const router = useRouter();
+  const { toast } = useToast();
   const [showFilters, setShowFilters] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
-  const [detailsTab, setDetailsTab] = useState<"stats" | "catalog">("stats");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const establishmentsQuery = useQuery({
     queryKey: ["config", "establishments", accessToken],
@@ -46,98 +48,50 @@ export function ConfigurationManagementPanel({ accessToken, locale, onLog }: Con
   const safePage = Math.min(page, totalPages - 1);
   const pagedEstablishments = filteredEstablishments.slice(safePage * pageSize, safePage * pageSize + pageSize);
 
-  const effectiveEstablishmentId = useMemo(
-    () => selectedEstablishmentId || pagedEstablishments[0]?.id || filteredEstablishments[0]?.id || "",
-    [selectedEstablishmentId, pagedEstablishments, filteredEstablishments],
-  );
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [safePage]);
 
-  const selectedEstablishment = useMemo(
-    () => (establishmentsQuery.data ?? []).find((item) => item.id === effectiveEstablishmentId),
-    [establishmentsQuery.data, effectiveEstablishmentId],
-  );
+  const allOnPageSelected = pagedEstablishments.length > 0 && pagedEstablishments.every((item) => selectedIds.has(item.id));
+  const someSelected = selectedIds.size > 0;
 
-  const canLoadScopedData = Boolean(accessToken && effectiveEstablishmentId);
+  const toggleSelection = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
-  const entryDiplomasQuery = useQuery({
-    queryKey: ["config", "entry-diplomas", accessToken, effectiveEstablishmentId],
-    queryFn: () => api.configuration.entryDiplomas.list(accessToken, effectiveEstablishmentId),
-    enabled: canLoadScopedData,
+  const toggleSelectAllOnPage = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allOnPageSelected) pagedEstablishments.forEach((item) => next.delete(item.id));
+      else pagedEstablishments.forEach((item) => next.add(item.id));
+      return next;
+    });
+  };
+
+  const bulkStatusMutation = useMutation({
+    mutationFn: async (status: "ACTIVE" | "INACTIVE") => {
+      const ids = Array.from(selectedIds);
+      for (const id of ids) {
+        if (status === "ACTIVE") {
+          await api.configuration.establishments.activate(accessToken, id);
+        } else {
+          await api.configuration.establishments.deactivate(accessToken, id);
+        }
+      }
+    },
+    onSuccess: async (_data, status) => {
+      await establishmentsQuery.refetch();
+      setSelectedIds(new Set());
+      onLog?.(`BUSINESS CONFIG ESTABLISHMENTS BULK ${status}: ${selectedIds.size}`);
+    },
+    onError: (error) => {
+      toast({ variant: "error", title: locale === "fr" ? "Erreur" : "Error", description: (error as Error).message });
+    },
   });
-
-  const academicLevelsQuery = useQuery({
-    queryKey: ["config", "academic-levels", accessToken, effectiveEstablishmentId],
-    queryFn: () => api.configuration.academicLevels.list(accessToken, effectiveEstablishmentId),
-    enabled: canLoadScopedData,
-  });
-
-  const programTracksQuery = useQuery({
-    queryKey: ["config", "program-tracks", accessToken, effectiveEstablishmentId],
-    queryFn: () => api.configuration.programTracks.list(accessToken, effectiveEstablishmentId),
-    enabled: canLoadScopedData,
-  });
-
-  const programTrackLevelsQuery = useQuery({
-    queryKey: ["config", "program-track-levels", accessToken, effectiveEstablishmentId],
-    queryFn: () => api.configuration.programTrackLevels.list(accessToken, effectiveEstablishmentId),
-    enabled: canLoadScopedData,
-  });
-
-  const acquisitionChannelsQuery = useQuery({
-    queryKey: ["config", "acquisition-channels", accessToken, effectiveEstablishmentId],
-    queryFn: () => api.configuration.acquisitionChannels.list(accessToken, effectiveEstablishmentId),
-    enabled: canLoadScopedData,
-  });
-
-  const funnelStagesQuery = useQuery({
-    queryKey: ["config", "funnel-stages", accessToken, effectiveEstablishmentId],
-    queryFn: () => api.configuration.funnelStages.list(accessToken, effectiveEstablishmentId),
-    enabled: canLoadScopedData,
-  });
-
-  const counters = [
-    {
-      labelFr: "Etablissements",
-      labelEn: "Establishments",
-      value: establishmentsQuery.data?.length ?? 0,
-      isError: establishmentsQuery.isError,
-    },
-    {
-      labelFr: "Diplomes d'entree",
-      labelEn: "Entry diplomas",
-      value: entryDiplomasQuery.data?.length ?? 0,
-      isError: entryDiplomasQuery.isError,
-    },
-    {
-      labelFr: "Niveaux academiques",
-      labelEn: "Academic levels",
-      value: academicLevelsQuery.data?.length ?? 0,
-      isError: academicLevelsQuery.isError,
-    },
-    {
-      labelFr: "Filieres",
-      labelEn: "Program tracks",
-      value: programTracksQuery.data?.length ?? 0,
-      isError: programTracksQuery.isError,
-    },
-    {
-      labelFr: "Filiere x niveau",
-      labelEn: "Track x level",
-      value: programTrackLevelsQuery.data?.length ?? 0,
-      isError: programTrackLevelsQuery.isError,
-    },
-    {
-      labelFr: "Canaux d'acquisition",
-      labelEn: "Acquisition channels",
-      value: acquisitionChannelsQuery.data?.length ?? 0,
-      isError: acquisitionChannelsQuery.isError,
-    },
-    {
-      labelFr: "Etapes de funnel",
-      labelEn: "Funnel stages",
-      value: funnelStagesQuery.data?.length ?? 0,
-      isError: funnelStagesQuery.isError,
-    },
-  ];
 
   return (
     <div className="grid gap-6">
@@ -221,10 +175,52 @@ export function ConfigurationManagementPanel({ accessToken, locale, onLog }: Con
             </div>
           ) : null}
 
+          {someSelected ? (
+            <div className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/30 px-4 py-2.5">
+              <p className="text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">{selectedIds.size}</span> {locale === "fr" ? "sélectionné(s)" : "selected"}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 rounded-lg px-3 text-xs"
+                  onClick={() => bulkStatusMutation.mutate("ACTIVE")}
+                  disabled={bulkStatusMutation.isPending}
+                >
+                  <Power className="mr-1.5 h-3.5 w-3.5" />
+                  {locale === "fr" ? "Activer la sélection" : "Activate selected"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 rounded-lg px-3 text-xs"
+                  onClick={() => bulkStatusMutation.mutate("INACTIVE")}
+                  disabled={bulkStatusMutation.isPending}
+                >
+                  <Power className="mr-1.5 h-3.5 w-3.5" />
+                  {locale === "fr" ? "Désactiver la sélection" : "Deactivate selected"}
+                </Button>
+                <Button variant="ghost" size="sm" className="h-8 rounded-lg px-3 text-xs" onClick={() => setSelectedIds(new Set())}>
+                  {locale === "fr" ? "Désélectionner" : "Deselect all"}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
           <div className="max-h-[44vh] overflow-auto rounded-xl border border-border/80 bg-background/70">
             <table className="w-full text-left text-sm">
               <thead className="bg-muted/70 text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
+                  <th className="w-10 px-3 py-3">
+                    <input
+                      type="checkbox"
+                      checked={allOnPageSelected}
+                      onChange={toggleSelectAllOnPage}
+                      className="h-4 w-4 rounded border-border accent-primary"
+                      aria-label="select all"
+                    />
+                  </th>
                   <th className="px-3 py-3">{locale === "fr" ? "Code" : "Code"}</th>
                   <th className="px-3 py-3">{locale === "fr" ? "Nom" : "Name"}</th>
                   <th className="px-3 py-3">{locale === "fr" ? "Nom court" : "Short name"}</th>
@@ -235,15 +231,23 @@ export function ConfigurationManagementPanel({ accessToken, locale, onLog }: Con
               <tbody>
                 {establishmentsQuery.isLoading ? (
                   <tr>
-                    <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">{locale === "fr" ? "Chargement..." : "Loading..."}</td>
+                    <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">{locale === "fr" ? "Chargement..." : "Loading..."}</td>
                   </tr>
                 ) : pagedEstablishments.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">{locale === "fr" ? "Aucun etablissement." : "No establishments."}</td>
+                    <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">{locale === "fr" ? "Aucun etablissement." : "No establishments."}</td>
                   </tr>
                 ) : (
                   pagedEstablishments.map((item) => (
-                    <tr key={item.id} className={`border-t border-border/60 ${effectiveEstablishmentId === item.id ? "bg-muted/40" : ""}`}>
+                    <tr key={item.id} className={`border-t border-border/60 ${selectedIds.has(item.id) ? "bg-primary/5" : ""}`}>
+                      <td className="px-3 py-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(item.id)}
+                          onChange={() => toggleSelection(item.id)}
+                          className="h-4 w-4 rounded border-border accent-primary"
+                        />
+                      </td>
                       <td className="px-3 py-3 font-mono text-xs">{item.code}</td>
                       <td className="px-3 py-3">{item.name}</td>
                       <td className="px-3 py-3 text-muted-foreground">{item.shortName ?? "-"}</td>
@@ -255,8 +259,8 @@ export function ConfigurationManagementPanel({ accessToken, locale, onLog }: Con
                           variant="outline"
                           size="sm"
                           onClick={() => {
-                            setSelectedEstablishmentId(item.id);
-                            onLog?.(`BUSINESS CONFIG ESTABLISHMENT SELECTED: ${item.code}`);
+                            onLog?.(`BUSINESS CONFIG ESTABLISHMENT OPENED: ${item.code}`);
+                            router.push(`/dashboard/establishments/${item.id}`);
                           }}
                         >
                           {locale === "fr" ? "Ouvrir" : "Open"}
@@ -281,81 +285,6 @@ export function ConfigurationManagementPanel({ accessToken, locale, onLog }: Con
           </div>
         </CardContent>
       </Card>
-
-      {effectiveEstablishmentId ? (
-        <Card className="border-border/60 bg-card/70">
-          <CardHeader>
-            <CardTitle>
-              {locale === "fr" ? "Detail de l'etablissement" : "Establishment details"}
-              {selectedEstablishment ? ` - ${selectedEstablishment.code}` : ""}
-            </CardTitle>
-            <CardDescription>
-              {locale === "fr" ? "Vue compartimentee avec onglets." : "Compartmented view with tabs."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            <Tabs value={detailsTab} onValueChange={(value) => setDetailsTab(value as "stats" | "catalog")}>
-              <TabsList className="w-full md:w-auto">
-                <TabsTrigger value="stats">{locale === "fr" ? "Statistiques" : "Statistics"}</TabsTrigger>
-                <TabsTrigger value="catalog">{locale === "fr" ? "Catalogue preview" : "Catalog preview"}</TabsTrigger>
-              </TabsList>
-            </Tabs>
-
-            {detailsTab === "stats" ? (
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                {counters.map((counter) => (
-                  <div key={counter.labelEn} className="rounded-xl border border-border/70 bg-background/80 p-3">
-                    <p className="text-xs text-muted-foreground">{locale === "fr" ? counter.labelFr : counter.labelEn}</p>
-                    <p className="mt-1 text-2xl font-semibold">{counter.value}</p>
-                    {counter.isError ? <Badge variant="danger">{locale === "fr" ? "Erreur" : "Error"}</Badge> : null}
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            {detailsTab === "catalog" ? (
-              <div className="grid gap-4 text-sm md:grid-cols-2">
-                <div className="space-y-2">
-                  <p className="font-medium">{locale === "fr" ? "Diplomes d'entree" : "Entry diplomas"}</p>
-                  {(entryDiplomasQuery.data ?? []).slice(0, 6).map((item) => (
-                    <div key={item.id} className="rounded-md border border-border/60 bg-background/70 px-3 py-2">
-                      {item.code} - {item.label}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="space-y-2">
-                  <p className="font-medium">{locale === "fr" ? "Niveaux academiques" : "Academic levels"}</p>
-                  {(academicLevelsQuery.data ?? []).slice(0, 6).map((item) => (
-                    <div key={item.id} className="rounded-md border border-border/60 bg-background/70 px-3 py-2">
-                      {item.code} - {item.label}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="space-y-2">
-                  <p className="font-medium">{locale === "fr" ? "Filieres" : "Program tracks"}</p>
-                  {(programTracksQuery.data ?? []).slice(0, 6).map((item) => (
-                    <div key={item.id} className="rounded-md border border-border/60 bg-background/70 px-3 py-2">
-                      {item.code} - {item.name}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="space-y-2">
-                  <p className="font-medium">{locale === "fr" ? "Canaux d'acquisition" : "Acquisition channels"}</p>
-                  {(acquisitionChannelsQuery.data ?? []).slice(0, 6).map((item) => (
-                    <div key={item.id} className="rounded-md border border-border/60 bg-background/70 px-3 py-2">
-                      {item.code} - {item.name}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-      ) : null}
-
     </div>
   );
 }

@@ -3,12 +3,23 @@ import type {
   AcquisitionChannelImportResultResponse,
   AcquisitionChannelResponse,
   AssignParentAdminRequest,
+  AssignedOperatorResponse,
   ApiSuccessResponse,
+  CandidateApplicationAuditEntryResponse,
+  CandidateApplicationResponse,
+  CandidateApplicationStageHistoryResponse,
+  CandidateConversationMessageResponse,
+  CandidateConversationResponse,
   CandidateImportResultResponse,
+  CandidateNoteAttachmentResponse,
+  CandidateNoteResponse,
   CandidateResponse,
   ChangePasswordRequest,
   CreateAcademicLevelRequest,
   CreateAcquisitionChannelRequest,
+  CreateCandidateApplicationRequest,
+  CreateCandidateConversationRequest,
+  CreateCandidateNoteRequest,
   CreateCandidateRequest,
   CreateEntryDiplomaRequest,
   CreateEstablishmentRequest,
@@ -20,14 +31,18 @@ import type {
   EligibleProgramTrackLevelResponse,
   EntryDiplomaResponse,
   EstablishmentResponse,
+  EstablishmentWhatsappConfigResponse,
+  UpdateEstablishmentWhatsappConfigRequest,
   FunnelStageImportResultResponse,
   FunnelStageResponse,
   FunnelStageTransitionResponse,
   GoogleAuthConfigResponse,
   GoogleAuthRequest,
+  TransitionCandidateApplicationRequest,
   UpdateProfileRequest,
   UpdateAcademicLevelRequest,
   UpdateAcquisitionChannelRequest,
+  UpdateCandidateNoteRequest,
   UpdateCandidateRequest,
   UpdateEntryDiplomaRequest,
   UpdateEstablishmentRequest,
@@ -43,12 +58,15 @@ import type {
   PagedResponse,
   PasswordResetRequestResult,
   PipelineViewPreferenceResponse,
+  SendCandidateConversationMessageRequest,
   NotificationBulkActionResponse,
   AuditLogResponse,
   AuditDashboardSummaryResponse,
   NotificationReadStatus,
   NotificationResponse,
   NotificationUnreadCountResponse,
+  OperatorEstablishmentAssignmentResponse,
+  OperatorPerformanceResponse,
   ProfileLocationCountryResponse,
   ProgramTrackLevelResponse,
   ProgramTrackResponse,
@@ -616,6 +634,17 @@ export const api = {
       apiRequest<UserResponse>(`/api/v1/users/${id}`, "PATCH", payload, token),
     assignParentAdmin: (token: string, id: string, payload: AssignParentAdminRequest) =>
       apiRequest<UserResponse>(`/api/v1/users/${id}/parent-admin`, "PATCH", payload, token),
+    listAssignedEstablishments: (token: string, id: string) =>
+      apiRequest<OperatorEstablishmentAssignmentResponse[]>(`/api/v1/users/${id}/establishments`, "GET", undefined, token),
+    assignEstablishment: (token: string, id: string, establishmentId: string) =>
+      apiRequest<OperatorEstablishmentAssignmentResponse>(
+        `/api/v1/users/${id}/establishments/${establishmentId}`,
+        "PUT",
+        undefined,
+        token,
+      ),
+    unassignEstablishment: (token: string, id: string, establishmentId: string) =>
+      apiRequest<void>(`/api/v1/users/${id}/establishments/${establishmentId}`, "DELETE", undefined, token),
     updateMe: (token: string, payload: UpdateProfileRequest) =>
       apiRequest<UserResponse>("/api/v1/users/me", "PATCH", payload, token),
     uploadMyProfilePhoto: (token: string, file: File) => {
@@ -792,6 +821,10 @@ export const api = {
         apiRequest<EstablishmentResponse>(`/api/v1/establishments/${id}`, "GET", undefined, token),
       update: (token: string, id: string, payload: UpdateEstablishmentRequest) =>
         apiRequest<EstablishmentResponse>(`/api/v1/establishments/${id}`, "PATCH", payload, token),
+      listOperators: (token: string, id: string) =>
+        apiRequest<AssignedOperatorResponse[]>(`/api/v1/establishments/${id}/operators`, "GET", undefined, token),
+      listOperatorPerformance: (token: string, id: string) =>
+        apiRequest<OperatorPerformanceResponse[]>(`/api/v1/establishments/${id}/operator-performance`, "GET", undefined, token),
       uploadLogo: (token: string, id: string, file: File) => {
         const formData = new FormData();
         formData.append("file", file);
@@ -1044,6 +1077,12 @@ export const api = {
       update: (token: string, payload: UpdatePipelineViewPreferenceRequest) =>
         apiRequest<PipelineViewPreferenceResponse>("/api/v1/pipeline-view-preference", "PUT", payload, token),
     },
+    whatsappConfig: {
+      get: (token: string, establishmentId: string) =>
+        apiRequest<EstablishmentWhatsappConfigResponse>(`/api/v1/establishments/${establishmentId}/whatsapp-config`, "GET", undefined, token),
+      update: (token: string, establishmentId: string, payload: UpdateEstablishmentWhatsappConfigRequest) =>
+        apiRequest<EstablishmentWhatsappConfigResponse>(`/api/v1/establishments/${establishmentId}/whatsapp-config`, "PUT", payload, token),
+    },
   },
   candidates: {
     create: (token: string, payload: CreateCandidateRequest) =>
@@ -1084,5 +1123,64 @@ export const api = {
       }
       return (await response.json()) as CandidateImportResultResponse;
     },
+  },
+  candidateApplications: {
+    create: (token: string, candidateId: string, payload: CreateCandidateApplicationRequest) =>
+      apiRequest<CandidateApplicationResponse>(`/api/v1/candidates/${candidateId}/applications`, "POST", payload, token),
+    listByCandidate: (token: string, candidateId: string, establishmentId: string) =>
+      apiRequest<CandidateApplicationResponse[]>(`/api/v1/candidates/${candidateId}/applications?establishmentId=${establishmentId}`, "GET", undefined, token),
+    list: (token: string, establishmentId: string) =>
+      apiRequest<CandidateApplicationResponse[]>(`/api/v1/candidate-applications?establishmentId=${establishmentId}`, "GET", undefined, token),
+    get: (token: string, id: string, establishmentId: string) =>
+      apiRequest<CandidateApplicationResponse>(`/api/v1/candidate-applications/${id}?establishmentId=${establishmentId}`, "GET", undefined, token),
+    transition: (token: string, id: string, payload: TransitionCandidateApplicationRequest) =>
+      apiRequest<CandidateApplicationResponse>(`/api/v1/candidate-applications/${id}/transitions`, "POST", payload, token),
+    history: (token: string, id: string, establishmentId: string) =>
+      apiRequest<CandidateApplicationStageHistoryResponse[]>(`/api/v1/candidate-applications/${id}/history?establishmentId=${establishmentId}`, "GET", undefined, token),
+    listNotes: (token: string, candidateApplicationId: string, establishmentId: string) =>
+      apiRequest<CandidateNoteResponse[]>(`/api/v1/candidate-applications/${candidateApplicationId}/notes?establishmentId=${establishmentId}`, "GET", undefined, token),
+    listAudit: (token: string, candidateApplicationId: string, establishmentId: string) =>
+      apiRequest<CandidateApplicationAuditEntryResponse[]>(`/api/v1/candidate-applications/${candidateApplicationId}/audit?establishmentId=${establishmentId}`, "GET", undefined, token),
+  },
+  candidateNotes: {
+    create: (token: string, candidateId: string, payload: CreateCandidateNoteRequest) =>
+      apiRequest<CandidateNoteResponse>(`/api/v1/candidates/${candidateId}/notes`, "POST", payload, token),
+    update: (token: string, candidateId: string, noteId: string, establishmentId: string, payload: UpdateCandidateNoteRequest) =>
+      apiRequest<CandidateNoteResponse>(`/api/v1/candidates/${candidateId}/notes/${noteId}?establishmentId=${establishmentId}`, "PUT", payload, token),
+    delete: (token: string, candidateId: string, noteId: string, establishmentId: string) =>
+      apiRequest<void>(`/api/v1/candidates/${candidateId}/notes/${noteId}?establishmentId=${establishmentId}`, "DELETE", undefined, token),
+    uploadAttachment: (token: string, candidateId: string, noteId: string, establishmentId: string, file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      return apiRequestMultipart<CandidateNoteAttachmentResponse>(
+        `/api/v1/candidates/${candidateId}/notes/${noteId}/attachments?establishmentId=${establishmentId}`,
+        "POST",
+        formData,
+        token,
+      );
+    },
+    getAttachmentBlob: (token: string, candidateId: string, noteId: string, attachmentId: string, establishmentId: string) =>
+      apiRequestBlob(
+        `/api/v1/candidates/${candidateId}/notes/${noteId}/attachments/${attachmentId}?establishmentId=${establishmentId}`,
+        "GET",
+        token,
+      ).then((response) => response.blob),
+    deleteAttachment: (token: string, candidateId: string, noteId: string, attachmentId: string, establishmentId: string) =>
+      apiRequest<void>(
+        `/api/v1/candidates/${candidateId}/notes/${noteId}/attachments/${attachmentId}?establishmentId=${establishmentId}`,
+        "DELETE",
+        undefined,
+        token,
+      ),
+  },
+  candidateConversations: {
+    create: (token: string, candidateId: string, payload: CreateCandidateConversationRequest) =>
+      apiRequest<CandidateConversationResponse>(`/api/v1/candidates/${candidateId}/conversations`, "POST", payload, token),
+    listForCandidate: (token: string, candidateId: string, establishmentId: string) =>
+      apiRequest<CandidateConversationResponse[]>(`/api/v1/candidates/${candidateId}/conversations?establishmentId=${establishmentId}`, "GET", undefined, token),
+    listMessages: (token: string, conversationId: string, establishmentId: string) =>
+      apiRequest<CandidateConversationMessageResponse[]>(`/api/v1/candidate-conversations/${conversationId}/messages?establishmentId=${establishmentId}`, "GET", undefined, token),
+    sendMessage: (token: string, conversationId: string, establishmentId: string, payload: SendCandidateConversationMessageRequest) =>
+      apiRequest<CandidateConversationMessageResponse>(`/api/v1/candidate-conversations/${conversationId}/messages?establishmentId=${establishmentId}`, "POST", payload, token),
   },
 };
