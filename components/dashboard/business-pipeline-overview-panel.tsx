@@ -106,7 +106,7 @@ export function BusinessPipelineOverviewPanel({
   const candidatesQueries = useQueries({
     queries: establishmentIds.map((establishmentId) => ({
       queryKey: ["pipeline-overview-candidates", accessToken, establishmentId],
-      queryFn: () => api.candidates.list(accessToken, establishmentId),
+      queryFn: () => api.candidates.listPaged(accessToken, establishmentId, { size: 500 }),
       enabled: Boolean(accessToken && canReadCandidates && establishmentId),
     })),
   });
@@ -114,7 +114,7 @@ export function BusinessPipelineOverviewPanel({
   const applicationsQueries = useQueries({
     queries: establishmentIds.map((establishmentId) => ({
       queryKey: ["pipeline-overview-applications", accessToken, establishmentId],
-      queryFn: () => api.candidateApplications.list(accessToken, establishmentId),
+      queryFn: () => api.candidateApplications.listPaged(accessToken, establishmentId, { size: 500 }),
       enabled: Boolean(accessToken && canReadCandidateApplications && establishmentId),
     })),
   });
@@ -176,11 +176,11 @@ export function BusinessPipelineOverviewPanel({
   });
 
   const candidates = useMemo<CandidateResponse[]>(
-    () => candidatesQueries.flatMap((query) => query.data ?? []),
+    () => candidatesQueries.flatMap((query) => query.data?.content ?? []),
     [candidatesQueries],
   );
   const applications = useMemo<CandidateApplicationResponse[]>(
-    () => applicationsQueries.flatMap((query) => query.data ?? []),
+    () => applicationsQueries.flatMap((query) => query.data?.content ?? []),
     [applicationsQueries],
   );
   const funnelStages = useMemo<FunnelStageResponse[]>(

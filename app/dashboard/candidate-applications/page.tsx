@@ -6,6 +6,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, ClipboardList, Eye, Filter, History, LayoutGrid, List, PlusCircle, RefreshCcw, Table as TableIcon, Workflow } from "lucide-react";
 import { api } from "@/lib/api";
 import { useDashboardStore } from "@/store/dashboard-store";
+import { useActiveEstablishment } from "@/hooks/use-active-establishment";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { MobileSectionTabs } from "@/components/dashboard/mobile-section-tabs";
 import { buildPermissionSet, hasPermission, canAccessTab } from "@/lib/permissions";
@@ -34,7 +35,6 @@ export default function CandidateApplicationsPage() {
   const { accessToken, locale, loadTokensFromStorage, setActiveTab } = useDashboardStore();
   const [isHydrated, setIsHydrated] = useState(false);
 
-  const [selectedEstId, setSelectedEstId] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"ALL" | CandidateApplicationStatus>("ALL");
   const [stageFilter, setStageFilter] = useState("ALL");
@@ -90,35 +90,33 @@ export default function CandidateApplicationsPage() {
   const canReadFunnelStageTransitions = hasPermission(permissionSet, "funnel_stage_transitions:list");
   const canReadPipelineViewPreference = hasPermission(permissionSet, "pipeline_view_preference:read");
 
-  const establishmentsQuery = useQuery({
-    queryKey: ["config", "establishments", accessToken],
-    queryFn: () => api.configuration.establishments.list(accessToken),
-    enabled: Boolean(accessToken),
-  });
-
-  const effectiveEstId = selectedEstId || establishmentsQuery.data?.[0]?.id || "";
+  const { establishments, establishmentsQuery, effectiveEstablishmentId: effectiveEstId, selectEstablishment } =
+    useActiveEstablishment();
 
   const estOptions = useMemo(
     () =>
-      (establishmentsQuery.data ?? []).map((est) => ({
+      establishments.map((est) => ({
         value: est.id,
         label: `${est.code} — ${est.name}`,
         keywords: [est.code, est.name, est.shortName ?? ""],
       })),
-    [establishmentsQuery.data],
+    [establishments],
   );
 
+  // Kanban et Liste ont besoin de l'ensemble des candidatures filtrees pour regrouper par
+  // etape de funnel ; seule la vue Tableau est reellement paginee. On charge donc une page
+  // large (plafonnee) plutot que de paginer ici. Voir api/docs/data-loading-optimization/01-PLAN.md.
   const query = useQuery({
     queryKey: ["candidate-applications", "list", accessToken, effectiveEstId],
-    queryFn: () => api.candidateApplications.list(accessToken, effectiveEstId),
+    queryFn: () => api.candidateApplications.listPaged(accessToken, effectiveEstId, { size: 500 }),
     enabled: Boolean(accessToken && effectiveEstId && canAccess),
   });
 
-  const items = useMemo(() => query.data ?? [], [query.data]);
+  const items = useMemo(() => query.data?.content ?? [], [query.data]);
 
   const candidatesQuery = useQuery({
     queryKey: ["candidates", accessToken, effectiveEstId],
-    queryFn: () => api.candidates.list(accessToken, effectiveEstId),
+    queryFn: () => api.candidates.listPaged(accessToken, effectiveEstId, { size: 500 }),
     enabled: Boolean(accessToken && effectiveEstId),
   });
 
@@ -190,7 +188,7 @@ export default function CandidateApplicationsPage() {
 
   const candidateMap = useMemo(() => {
     const map = new Map<string, string>();
-    (candidatesQuery.data ?? []).forEach((c) => map.set(c.id, `${c.firstName} ${c.lastName}`));
+    (candidatesQuery.data?.content ?? []).forEach((c) => map.set(c.id, `${c.firstName} ${c.lastName}`));
     return map;
   }, [candidatesQuery.data]);
 
@@ -234,7 +232,7 @@ export default function CandidateApplicationsPage() {
 
   const candidateOptions = useMemo(
     () =>
-      (candidatesQuery.data ?? []).map((c) => ({
+      (candidatesQuery.data?.content ?? []).map((c) => ({
         value: c.id,
         label: `${c.firstName} ${c.lastName}`,
         keywords: [c.firstName, c.lastName],
@@ -595,7 +593,7 @@ export default function CandidateApplicationsPage() {
                     <SearchableSelect
                       options={estOptions}
                       value={effectiveEstId}
-                      onValueChange={(v) => setSelectedEstId(v)}
+                      onValueChange={(v) => selectEstablishment(v)}
                       placeholder={locale === "fr" ? "Sélectionner un établissement" : "Select an establishment"}
                       searchPlaceholder={locale === "fr" ? "Rechercher..." : "Search..."}
                     />
