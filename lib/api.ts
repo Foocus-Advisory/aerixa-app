@@ -1089,6 +1089,25 @@ export const api = {
       apiRequest<CandidateResponse>("/api/v1/candidates", "POST", payload, token),
     list: (token: string, establishmentId: string) =>
       apiRequest<CandidateResponse[]>(`/api/v1/candidates?establishmentId=${establishmentId}`, "GET", undefined, token),
+    listPaged: (
+      token: string,
+      establishmentId: string,
+      params: { page?: number; size?: number; sortBy?: string; direction?: "asc" | "desc"; search?: string; status?: string } = {},
+    ) => {
+      const searchParams = new URLSearchParams();
+      searchParams.set("establishmentId", establishmentId);
+      searchParams.set("page", String(params.page ?? 0));
+      searchParams.set("size", String(params.size ?? 20));
+      searchParams.set("sortBy", params.sortBy ?? "createdAt");
+      searchParams.set("direction", params.direction ?? "desc");
+      if (params.search && params.search.trim().length > 0) {
+        searchParams.set("search", params.search.trim());
+      }
+      if (params.status && params.status !== "ALL") {
+        searchParams.set("status", params.status);
+      }
+      return apiRequest<PagedResponse<CandidateResponse>>(`/api/v1/candidates?${searchParams.toString()}`, "GET", undefined, token);
+    },
     get: (token: string, id: string, establishmentId: string) =>
       apiRequest<CandidateResponse>(`/api/v1/candidates/${id}?establishmentId=${establishmentId}`, "GET", undefined, token),
     update: (token: string, id: string, establishmentId: string, payload: UpdateCandidateRequest) =>

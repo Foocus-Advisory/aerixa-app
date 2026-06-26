@@ -21,6 +21,8 @@ import {
 import ReactCountryFlag from "react-country-flag";
 import { api, ApiError } from "@/lib/api";
 import { useDashboardStore } from "@/store/dashboard-store";
+import { useActiveEstablishment } from "@/hooks/use-active-establishment";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { MobileSectionTabs } from "@/components/dashboard/mobile-section-tabs";
 import { buildPermissionSet, hasPermission } from "@/lib/permissions";
@@ -243,7 +245,6 @@ export default function CandidatesPage() {
   const { accessToken, locale, loadTokensFromStorage, setActiveTab } = useDashboardStore();
   const [isHydrated, setIsHydrated] = useState(false);
 
-  const [selectedEstId, setSelectedEstId] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | CandidateStatus>("ALL");
@@ -308,22 +309,22 @@ export default function CandidatesPage() {
   const canReadAcquisitionChannels = hasPermission(permissionSet, "acquisition_channels:list");
   const canReadEntryDiplomas = hasPermission(permissionSet, "entry_diplomas:list");
 
-  const establishmentsQuery = useQuery({
-    queryKey: ["config", "establishments", accessToken],
-    queryFn: () => api.configuration.establishments.list(accessToken),
-    enabled: Boolean(accessToken),
-  });
-
-  const effectiveEstId = selectedEstId || establishmentsQuery.data?.[0]?.id || "";
+  const {
+    establishments,
+    establishmentsQuery,
+    effectiveEstablishmentId: effectiveEstId,
+    isValidEstablishment,
+    selectEstablishment,
+  } = useActiveEstablishment();
 
   const estOptions = useMemo(
     () =>
-      (establishmentsQuery.data ?? []).map((est) => ({
+      establishments.map((est) => ({
         value: est.id,
         label: `${est.code} — ${est.name}`,
         keywords: [est.code, est.name, est.shortName ?? ""],
       })),
-    [establishmentsQuery.data],
+    [establishments],
   );
 
   const acquisitionChannelsQuery = useQuery({
@@ -392,33 +393,33 @@ export default function CandidatesPage() {
     return map;
   }, [entryDiplomasQuery.data]);
 
-  const query = useQuery({
-    queryKey: ["candidates", accessToken, effectiveEstId],
-    queryFn: () => api.candidates.list(accessToken, effectiveEstId),
-    enabled: Boolean(accessToken && effectiveEstId),
-  });
-
-  const items = useMemo(() => query.data ?? [], [query.data]);
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return items.filter((item) => {
-      const matchesStatus = statusFilter === "ALL" || item.status === statusFilter;
-      const matchesGender = genderFilter === "ALL" || (item.gender ?? "UNSPECIFIED") === genderFilter;
-      const matchesSearch =
-        q.length === 0 ||
-        `${item.firstName} ${item.lastName} ${item.candidatePhone} ${item.email ?? ""}`.toLowerCase().includes(q);
-      return matchesStatus && matchesGender && matchesSearch;
-    });
-  }, [items, search, statusFilter, genderFilter]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const pageItems = useMemo(() => filtered.slice(page * pageSize, (page + 1) * pageSize), [filtered, page, pageSize]);
+  const debouncedSearch = useDebouncedValue(search.trim(), 300);
 
   useEffect(() => {
-    const maxPage = Math.max(totalPages - 1, 0);
-    if (page > maxPage) setPage(maxPage);
-  }, [page, totalPages]);
+    setPage(0);
+  }, [effectiveEstId, statusFilter, debouncedSearch, pageSize]);
+
+  const query = useQuery({
+    queryKey: ["candidates", "page", effectiveEstId, page, pageSize, statusFilter, debouncedSearch],
+    queryFn: () =>
+      api.candidates.listPaged(accessToken, effectiveEstId, {
+        page,
+        size: pageSize,
+        status: statusFilter,
+        search: debouncedSearch,
+      }),
+    enabled: Boolean(accessToken) && isValidEstablishment,
+    staleTime: 60_000,
+  });
+
+  // genderFilter reste applique cote client : non supporte par l'API (cf. api/docs/data-loading-optimization/02-BACKEND_CONTRACT.md)
+  const pageItems = useMemo(() => {
+    const items = query.data?.content ?? [];
+    return genderFilter === "ALL" ? items : items.filter((item) => (item.gender ?? "UNSPECIFIED") === genderFilter);
+  }, [query.data, genderFilter]);
+
+  const totalElements = query.data?.totalElements ?? 0;
+  const totalPages = Math.max(1, query.data?.totalPages ?? 1);
 
   useEffect(() => {
     setSelectedIds(new Set());
@@ -832,23 +833,23 @@ export default function CandidatesPage() {
                   </div>
                 </div>
 
-                {/* KPI cards */}
+                {/* KPI cards (page courante uniquement, pagination serveur) */}
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Total</p>
-                    <p className="mt-2 text-2xl font-semibold">{items.length}</p>
+                    <p className="mt-2 text-2xl font-semibold">{totalElements}</p>
                   </div>
                   <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">{t.active}</p>
-                    <p className="mt-2 text-2xl font-semibold">{items.filter((x) => x.status === "ACTIVE").length}</p>
+                    <p className="mt-2 text-2xl font-semibold">{pageItems.filter((x) => x.status === "ACTIVE").length}</p>
                   </div>
                   <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">{t.archived}</p>
-                    <p className="mt-2 text-2xl font-semibold">{items.filter((x) => x.status === "ARCHIVED").length}</p>
+                    <p className="mt-2 text-2xl font-semibold">{pageItems.filter((x) => x.status === "ARCHIVED").length}</p>
                   </div>
                   <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">{locale === "fr" ? "Avec email" : "With email"}</p>
-                    <p className="mt-2 text-2xl font-semibold">{items.filter((x) => x.email).length}</p>
+                    <p className="mt-2 text-2xl font-semibold">{pageItems.filter((x) => x.email).length}</p>
                   </div>
                 </div>
               </CardHeader>
@@ -860,7 +861,7 @@ export default function CandidatesPage() {
                   <SearchableSelect
                     options={estOptions}
                     value={effectiveEstId}
-                    onValueChange={(v) => { setSelectedEstId(v); setPage(0); }}
+                    onValueChange={(v) => { selectEstablishment(v); setPage(0); }}
                     placeholder={locale === "fr" ? "Sélectionner un établissement" : "Select an establishment"}
                     searchPlaceholder={locale === "fr" ? "Rechercher..." : "Search..."}
                   />
@@ -1114,7 +1115,7 @@ export default function CandidatesPage() {
 
                 {/* Pagination */}
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-xs text-muted-foreground">{t.count(filtered.length)}</p>
+                  <p className="text-xs text-muted-foreground">{t.count(totalElements)}</p>
                   <div className="flex items-center gap-2">
                     <p className="text-xs text-muted-foreground">{t.pageLabel(page + 1, totalPages)}</p>
                     <Button variant="outline" size="sm" onClick={() => setPage(0)} disabled={page === 0}>«</Button>
