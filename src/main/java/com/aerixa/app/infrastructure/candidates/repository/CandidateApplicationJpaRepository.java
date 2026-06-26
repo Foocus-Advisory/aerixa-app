@@ -2,6 +2,8 @@ package com.aerixa.app.infrastructure.candidates.repository;
 
 import com.aerixa.app.domain.candidates.entity.CandidateApplication;
 import com.aerixa.app.domain.candidates.entity.CandidateApplicationStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -24,6 +26,25 @@ public interface CandidateApplicationJpaRepository extends JpaRepository<Candida
             + "AND (c.createdByUserId = :operatorId OR c.assignedOperatorId = :operatorId)")
     List<CandidateApplication> findVisibleToOperatorByEstablishment(@Param("establishmentId") UUID establishmentId,
                                                                       @Param("operatorId") UUID operatorId, Sort sort);
+
+    @Query("SELECT a FROM CandidateApplication a WHERE a.establishmentId = :establishmentId "
+            + "AND (:status IS NULL OR a.status = :status) "
+            + "AND (:funnelStageId IS NULL OR a.currentStageId = :funnelStageId)")
+    Page<CandidateApplication> searchAllByEstablishmentId(@Param("establishmentId") UUID establishmentId,
+                                                           @Param("status") CandidateApplicationStatus status,
+                                                           @Param("funnelStageId") UUID funnelStageId,
+                                                           Pageable pageable);
+
+    @Query("SELECT a FROM CandidateApplication a, Candidate c "
+            + "WHERE a.candidateId = c.id AND a.establishmentId = :establishmentId "
+            + "AND (c.createdByUserId = :operatorId OR c.assignedOperatorId = :operatorId OR a.assignedOperatorId = :operatorId) "
+            + "AND (:status IS NULL OR a.status = :status) "
+            + "AND (:funnelStageId IS NULL OR a.currentStageId = :funnelStageId)")
+    Page<CandidateApplication> searchVisibleToOperatorByEstablishment(@Param("establishmentId") UUID establishmentId,
+                                                                       @Param("operatorId") UUID operatorId,
+                                                                       @Param("status") CandidateApplicationStatus status,
+                                                                       @Param("funnelStageId") UUID funnelStageId,
+                                                                       Pageable pageable);
 
     Optional<CandidateApplication> findByIdAndEstablishmentId(UUID id, UUID establishmentId);
 

@@ -1,5 +1,6 @@
 package com.aerixa.app.infrastructure.candidates.controller;
 
+import com.aerixa.app.application.auth.dto.PagedResponse;
 import com.aerixa.app.application.candidates.dto.CandidateImportResultResponse;
 import com.aerixa.app.application.candidates.dto.CandidateResponse;
 import com.aerixa.app.application.candidates.dto.CreateCandidateRequest;
@@ -54,11 +55,18 @@ public class CandidatesController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('candidates:list')")
-    @Operation(summary = "Lister les candidats")
-    public ResponseEntity<List<CandidateResponse>> list(@RequestParam UUID establishmentId,
-                                                         Authentication authentication,
-                                                         HttpServletRequest httpRequest) {
-        return ResponseEntity.ok(candidateService.list(currentUserId(authentication), establishmentId, resolveCorrelationId(httpRequest)));
+    @Operation(summary = "Lister les candidats (pagine)")
+    public ResponseEntity<PagedResponse<CandidateResponse>> list(@RequestParam UUID establishmentId,
+                                                                   @RequestParam(defaultValue = "0") int page,
+                                                                   @RequestParam(defaultValue = "20") int size,
+                                                                   @RequestParam(defaultValue = "createdAt") String sortBy,
+                                                                   @RequestParam(defaultValue = "desc") String direction,
+                                                                   @RequestParam(required = false) String search,
+                                                                   @RequestParam(required = false) String status,
+                                                                   Authentication authentication,
+                                                                   HttpServletRequest httpRequest) {
+        return ResponseEntity.ok(candidateService.listPaged(currentUserId(authentication), establishmentId,
+                page, size, sortBy, direction, search, status, resolveCorrelationId(httpRequest)));
     }
 
     @GetMapping("/{id}")

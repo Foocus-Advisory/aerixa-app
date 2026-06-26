@@ -1,5 +1,6 @@
 package com.aerixa.app.application.candidates.service;
 
+import com.aerixa.app.application.auth.dto.PagedResponse;
 import com.aerixa.app.application.candidates.dto.CandidateImportResultResponse;
 import com.aerixa.app.application.candidates.dto.CandidateResponse;
 import com.aerixa.app.application.candidates.dto.CreateCandidateRequest;
@@ -43,6 +44,9 @@ import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -126,18 +130,35 @@ public class CandidateService {
     }
 
     @Transactional(readOnly = true)
-    public List<CandidateResponse> list(UUID actorUserId, UUID establishmentId, String correlationId) {
+    public PagedResponse<CandidateResponse> listPaged(UUID actorUserId, UUID establishmentId, int page, int size,
+                                                        String sortBy, String direction, String search, String status,
+                                                        String correlationId) {
         User actor = actor(actorUserId);
         permissionGuard.assertHasPermission(actor, CandidatesPermissions.CANDIDATES_LIST);
         assertEstablishmentAccess(actor, establishmentId);
 
-        Sort sort = Sort.by(Sort.Direction.ASC, "lastName", "firstName");
-        List<Candidate> items = isOperatorOnly(actor)
-                ? candidateJpaRepository.findVisibleToOperator(establishmentId, actor.getId(), sort)
-                : candidateJpaRepository.findAllByEstablishmentId(establishmentId, sort);
+        Sort.Direction sortDirection = "asc".equalsIgnoreCase(direction) ? Sort.Direction.ASC : Sort.Direction.DESC;
+        String sortField = normalizeSortField(sortBy);
+        Pageable pageable = PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 100),
+                Sort.by(sortDirection, sortField));
+
+        CandidateStatus statusFilter = parseStatus(status);
+        String searchFilter = (search == null || search.isBlank()) ? null : "%" + search.trim().toLowerCase() + "%";
+
+        Page<Candidate> items = isOperatorOnly(actor)
+                ? candidateJpaRepository.searchVisibleToOperator(establishmentId, actor.getId(), statusFilter, searchFilter, pageable)
+                : candidateJpaRepository.searchAllByEstablishmentId(establishmentId, statusFilter, searchFilter, pageable);
+
         publishSuccess(actor.getId(), establishmentId, ConfigurationAuditAction.LIST, null, correlationId,
-                Map.of("count", items.size()));
-        return items.stream().map(this::toResponse).toList();
+                Map.of("count", items.getNumberOfElements()));
+
+        return PagedResponse.<CandidateResponse>builder()
+                .content(items.getContent().stream().map(this::toResponse).toList())
+                .page(items.getNumber())
+                .size(items.getSize())
+                .totalElements(items.getTotalElements())
+                .totalPages(items.getTotalPages())
+                .build();
     }
 
     @Transactional(readOnly = true)
@@ -641,6 +662,23 @@ public class CandidateService {
             throw new IllegalArgumentException("Le diplome d'entree est obligatoire");
         }
         return request.getEstablishmentId();
+    }
+
+    private static final List<String> SORTABLE_FIELDS = List.of("createdAt", "lastName", "firstName", "status");
+
+    private String normalizeSortField(String sortBy) {
+        return SORTABLE_FIELDS.contains(sortBy) ? sortBy : "createdAt";
+    }
+
+    private CandidateStatus parseStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+        try {
+            return CandidateStatus.valueOf(status.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException("Statut candidat invalide: " + status);
+        }
     }
 
     private Candidate resolveScoped(User actor, UUID candidateId, UUID establishmentId) {
