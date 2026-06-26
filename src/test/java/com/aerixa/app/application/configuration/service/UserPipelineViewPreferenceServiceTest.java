@@ -4,13 +4,12 @@ import com.aerixa.app.application.configuration.audit.ConfigurationAuditPublishe
 import com.aerixa.app.application.configuration.dto.PipelineViewPreferenceResponse;
 import com.aerixa.app.application.configuration.dto.UpdatePipelineViewPreferenceRequest;
 import com.aerixa.app.application.configuration.security.ConfigurationPermissionGuard;
+import com.aerixa.app.application.configuration.security.EstablishmentAccessGuard;
 import com.aerixa.app.domain.auth.entity.Role;
 import com.aerixa.app.domain.auth.entity.User;
 import com.aerixa.app.domain.auth.repository.UserRepository;
-import com.aerixa.app.domain.configuration.entity.Establishment;
 import com.aerixa.app.domain.configuration.entity.PipelineViewType;
 import com.aerixa.app.domain.configuration.entity.UserPipelineViewPreference;
-import com.aerixa.app.infrastructure.configuration.repository.EstablishmentJpaRepository;
 import com.aerixa.app.infrastructure.configuration.repository.UserPipelineViewPreferenceJpaRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,13 +36,13 @@ class UserPipelineViewPreferenceServiceTest {
     private UserPipelineViewPreferenceJpaRepository userPipelineViewPreferenceJpaRepository;
 
     @Mock
-    private EstablishmentJpaRepository establishmentJpaRepository;
-
-    @Mock
     private UserRepository userRepository;
 
     @Mock
     private ConfigurationPermissionGuard permissionGuard;
+
+    @Mock
+    private EstablishmentAccessGuard establishmentAccessGuard;
 
     @Mock
     private ConfigurationAuditPublisher auditPublisher;
@@ -65,9 +64,6 @@ class UserPipelineViewPreferenceServiceTest {
     void readShouldReturnDefaultKanbanWhenNoPreferenceExists() {
         when(userRepository.findById(admin.getId())).thenReturn(Optional.of(admin));
         doNothing().when(permissionGuard).assertHasPermission(any(User.class), anyString());
-        when(establishmentJpaRepository.findById(establishmentId)).thenReturn(Optional.of(
-                Establishment.builder().id(establishmentId).createdByUserId(admin.getId()).code("EST").name("Est").build()
-        ));
         when(userPipelineViewPreferenceJpaRepository.findByUserIdAndEstablishmentId(admin.getId(), establishmentId))
                 .thenReturn(Optional.empty());
 
@@ -94,9 +90,6 @@ class UserPipelineViewPreferenceServiceTest {
 
         when(userRepository.findById(admin.getId())).thenReturn(Optional.of(admin));
         doNothing().when(permissionGuard).assertHasPermission(any(User.class), anyString());
-        when(establishmentJpaRepository.findById(establishmentId)).thenReturn(Optional.of(
-                Establishment.builder().id(establishmentId).createdByUserId(admin.getId()).code("EST").name("Est").build()
-        ));
         when(userPipelineViewPreferenceJpaRepository.findByUserIdAndEstablishmentId(admin.getId(), establishmentId))
                 .thenReturn(Optional.empty());
         when(userPipelineViewPreferenceJpaRepository.save(any(UserPipelineViewPreference.class))).thenReturn(saved);
@@ -123,9 +116,6 @@ class UserPipelineViewPreferenceServiceTest {
 
         when(userRepository.findById(admin.getId())).thenReturn(Optional.of(admin));
         doNothing().when(permissionGuard).assertHasPermission(any(User.class), anyString());
-        when(establishmentJpaRepository.findById(establishmentId)).thenReturn(Optional.of(
-                Establishment.builder().id(establishmentId).createdByUserId(admin.getId()).code("EST").name("Est").build()
-        ));
         when(userPipelineViewPreferenceJpaRepository.findByUserIdAndEstablishmentId(admin.getId(), establishmentId))
                 .thenReturn(Optional.of(existing));
         when(userPipelineViewPreferenceJpaRepository.save(any(UserPipelineViewPreference.class))).thenAnswer(invocation -> invocation.getArgument(0));

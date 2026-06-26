@@ -5,14 +5,12 @@ import com.aerixa.app.application.configuration.dto.AcademicLevelResponse;
 import com.aerixa.app.application.configuration.dto.CreateAcademicLevelRequest;
 import com.aerixa.app.application.configuration.dto.UpdateAcademicLevelRequest;
 import com.aerixa.app.application.configuration.security.ConfigurationPermissionGuard;
-import com.aerixa.app.application.configuration.security.EstablishmentScopeGuard;
+import com.aerixa.app.application.configuration.security.EstablishmentAccessGuard;
 import com.aerixa.app.domain.auth.entity.Role;
 import com.aerixa.app.domain.auth.entity.User;
-import com.aerixa.app.domain.configuration.entity.Establishment;
 import com.aerixa.app.domain.auth.repository.UserRepository;
 import com.aerixa.app.domain.configuration.entity.AcademicLevel;
 import com.aerixa.app.infrastructure.configuration.repository.AcademicLevelJpaRepository;
-import com.aerixa.app.infrastructure.configuration.repository.EstablishmentJpaRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,14 +39,11 @@ class AcademicLevelServiceTest {
     @Mock
     private UserRepository userRepository;
 
-        @Mock
-        private EstablishmentJpaRepository establishmentJpaRepository;
-
     @Mock
     private ConfigurationPermissionGuard permissionGuard;
 
     @Mock
-    private EstablishmentScopeGuard establishmentScopeGuard;
+    private EstablishmentAccessGuard establishmentAccessGuard;
 
     @Mock
     private ConfigurationAuditPublisher auditPublisher;
@@ -62,7 +57,7 @@ class AcademicLevelServiceTest {
     @BeforeEach
     void setUp() {
         establishmentId = UUID.randomUUID();
-                admin = User.builder().roles(Set.of(Role.builder().name("ADMIN").permissions(Set.of()).build())).build();
+        admin = User.builder().roles(Set.of(Role.builder().name("ADMIN").permissions(Set.of()).build())).build();
         admin.setId(UUID.randomUUID());
     }
 
@@ -102,9 +97,6 @@ class AcademicLevelServiceTest {
 
         when(userRepository.findById(admin.getId())).thenReturn(Optional.of(admin));
         doNothing().when(permissionGuard).assertHasPermission(any(User.class), anyString());
-        when(establishmentJpaRepository.findById(establishmentId)).thenReturn(Optional.of(
-                Establishment.builder().id(establishmentId).createdByUserId(admin.getId()).code("EST").name("Est").build()
-        ));
         when(academicLevelJpaRepository.existsByEstablishmentIdAndCodeIgnoreCase(establishmentId, "BTS1")).thenReturn(false);
         when(academicLevelJpaRepository.save(any(AcademicLevel.class))).thenReturn(saved);
 
@@ -127,9 +119,6 @@ class AcademicLevelServiceTest {
 
         when(userRepository.findById(admin.getId())).thenReturn(Optional.of(admin));
         doNothing().when(permissionGuard).assertHasPermission(any(User.class), anyString());
-        when(establishmentJpaRepository.findById(establishmentId)).thenReturn(Optional.of(
-                Establishment.builder().id(establishmentId).createdByUserId(admin.getId()).code("EST").name("Est").build()
-        ));
         when(academicLevelJpaRepository.findAllByEstablishmentId(any(UUID.class), any(org.springframework.data.domain.Sort.class)))
                 .thenReturn(List.of(level));
 
@@ -157,9 +146,6 @@ class AcademicLevelServiceTest {
 
         when(userRepository.findById(admin.getId())).thenReturn(Optional.of(admin));
         doNothing().when(permissionGuard).assertHasPermission(any(User.class), anyString());
-        when(establishmentJpaRepository.findById(establishmentId)).thenReturn(Optional.of(
-                Establishment.builder().id(establishmentId).createdByUserId(admin.getId()).code("EST").name("Est").build()
-        ));
         when(academicLevelJpaRepository.findByIdAndEstablishmentId(levelId, establishmentId)).thenReturn(Optional.of(level));
         when(academicLevelJpaRepository.save(any(AcademicLevel.class))).thenAnswer(invocation -> invocation.getArgument(0));
 

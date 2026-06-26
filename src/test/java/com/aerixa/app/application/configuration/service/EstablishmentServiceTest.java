@@ -5,6 +5,7 @@ import com.aerixa.app.application.configuration.dto.CreateEstablishmentRequest;
 import com.aerixa.app.application.configuration.dto.EstablishmentResponse;
 import com.aerixa.app.application.configuration.dto.UpdateEstablishmentRequest;
 import com.aerixa.app.application.configuration.security.ConfigurationPermissionGuard;
+import com.aerixa.app.application.configuration.security.EstablishmentAccessGuard;
 import com.aerixa.app.domain.auth.entity.Role;
 import com.aerixa.app.domain.auth.entity.User;
 import com.aerixa.app.domain.auth.exception.PermissionDeniedException;
@@ -45,6 +46,9 @@ class EstablishmentServiceTest {
     @Mock
     private ConfigurationAuditPublisher auditPublisher;
 
+    @Mock
+    private EstablishmentAccessGuard establishmentAccessGuard;
+
     @InjectMocks
     private EstablishmentService establishmentService;
 
@@ -80,17 +84,10 @@ class EstablishmentServiceTest {
     void adminCanOnlyReadOwnEstablishment() {
         UUID establishmentId = UUID.randomUUID();
 
-        Establishment otherAdminEstablishment = Establishment.builder()
-                .id(establishmentId)
-                .code("EST-A")
-                .name("Autre")
-                .createdByUserId(UUID.randomUUID())
-                .status(Establishment.EstablishmentStatus.ACTIVE)
-                .build();
-
         when(userRepository.findById(admin.getId())).thenReturn(Optional.of(admin));
         doNothing().when(permissionGuard).assertHasPermission(any(User.class), anyString());
-        when(establishmentRepository.findById(establishmentId)).thenReturn(Optional.of(otherAdminEstablishment));
+        when(establishmentAccessGuard.assertAccess(admin, establishmentId))
+                .thenThrow(new PermissionDeniedException("establishments:scope"));
 
         assertThrows(PermissionDeniedException.class,
                 () -> establishmentService.getEstablishment(admin.getId(), establishmentId, "corr-2"));

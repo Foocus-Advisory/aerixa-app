@@ -5,14 +5,13 @@ import com.aerixa.app.application.configuration.dto.CreateFunnelStageTransitionR
 import com.aerixa.app.application.configuration.dto.FunnelStageTransitionResponse;
 import com.aerixa.app.application.configuration.dto.UpdateFunnelStageTransitionRequest;
 import com.aerixa.app.application.configuration.security.ConfigurationPermissionGuard;
+import com.aerixa.app.application.configuration.security.EstablishmentAccessGuard;
 import com.aerixa.app.domain.auth.entity.Role;
 import com.aerixa.app.domain.auth.entity.User;
 import com.aerixa.app.domain.auth.repository.UserRepository;
-import com.aerixa.app.domain.configuration.entity.Establishment;
 import com.aerixa.app.domain.configuration.entity.FunnelStage;
 import com.aerixa.app.domain.configuration.entity.FunnelStageTransition;
 import com.aerixa.app.domain.configuration.entity.FunnelStageType;
-import com.aerixa.app.infrastructure.configuration.repository.EstablishmentJpaRepository;
 import com.aerixa.app.infrastructure.configuration.repository.FunnelStageJpaRepository;
 import com.aerixa.app.infrastructure.configuration.repository.FunnelStageTransitionJpaRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,13 +43,13 @@ class FunnelStageTransitionServiceTest {
     private FunnelStageJpaRepository funnelStageJpaRepository;
 
     @Mock
-    private EstablishmentJpaRepository establishmentJpaRepository;
-
-    @Mock
     private UserRepository userRepository;
 
     @Mock
     private ConfigurationPermissionGuard permissionGuard;
+
+    @Mock
+    private EstablishmentAccessGuard establishmentAccessGuard;
 
     @Mock
     private ConfigurationAuditPublisher auditPublisher;
@@ -90,9 +89,6 @@ class FunnelStageTransitionServiceTest {
 
         when(userRepository.findById(admin.getId())).thenReturn(Optional.of(admin));
         doNothing().when(permissionGuard).assertHasPermission(any(User.class), anyString());
-        when(establishmentJpaRepository.findById(establishmentId)).thenReturn(Optional.of(
-                Establishment.builder().id(establishmentId).createdByUserId(admin.getId()).code("EST").name("Est").build()
-        ));
         when(funnelStageJpaRepository.findByIdAndEstablishmentId(stageId, establishmentId)).thenReturn(Optional.of(stage));
 
         assertThrows(IllegalArgumentException.class,
@@ -122,9 +118,6 @@ class FunnelStageTransitionServiceTest {
 
         when(userRepository.findById(admin.getId())).thenReturn(Optional.of(admin));
         doNothing().when(permissionGuard).assertHasPermission(any(User.class), anyString());
-        when(establishmentJpaRepository.findById(establishmentId)).thenReturn(Optional.of(
-                Establishment.builder().id(establishmentId).createdByUserId(admin.getId()).code("EST").name("Est").build()
-        ));
         when(funnelStageJpaRepository.findByIdAndEstablishmentId(fromId, establishmentId)).thenReturn(Optional.of(from));
         when(funnelStageJpaRepository.findByIdAndEstablishmentId(toId, establishmentId)).thenReturn(Optional.of(to));
         when(funnelStageTransitionJpaRepository.existsByEstablishmentIdAndFromStageIdAndToStageId(establishmentId, fromId, toId)).thenReturn(false);
@@ -148,9 +141,6 @@ class FunnelStageTransitionServiceTest {
 
         when(userRepository.findById(admin.getId())).thenReturn(Optional.of(admin));
         doNothing().when(permissionGuard).assertHasPermission(any(User.class), anyString());
-        when(establishmentJpaRepository.findById(establishmentId)).thenReturn(Optional.of(
-                Establishment.builder().id(establishmentId).createdByUserId(admin.getId()).code("EST").name("Est").build()
-        ));
         when(funnelStageTransitionJpaRepository.findAllByEstablishmentId(any(UUID.class), any(org.springframework.data.domain.Sort.class)))
                 .thenReturn(List.of(item));
 
@@ -181,9 +171,6 @@ class FunnelStageTransitionServiceTest {
 
         when(userRepository.findById(admin.getId())).thenReturn(Optional.of(admin));
         doNothing().when(permissionGuard).assertHasPermission(any(User.class), anyString());
-        when(establishmentJpaRepository.findById(establishmentId)).thenReturn(Optional.of(
-                Establishment.builder().id(establishmentId).createdByUserId(admin.getId()).code("EST").name("Est").build()
-        ));
         when(funnelStageTransitionJpaRepository.findByIdAndEstablishmentId(transitionId, establishmentId)).thenReturn(Optional.of(item));
         when(funnelStageJpaRepository.findByIdAndEstablishmentId(toId, establishmentId)).thenReturn(Optional.of(to));
         when(funnelStageTransitionJpaRepository.existsByEstablishmentIdAndFromStageIdAndToStageIdAndIdNot(establishmentId, fromId, toId, transitionId)).thenReturn(false);

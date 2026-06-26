@@ -5,13 +5,11 @@ import com.aerixa.app.application.configuration.dto.CreateProgramTrackRequest;
 import com.aerixa.app.application.configuration.dto.ProgramTrackResponse;
 import com.aerixa.app.application.configuration.dto.UpdateProgramTrackRequest;
 import com.aerixa.app.application.configuration.security.ConfigurationPermissionGuard;
-import com.aerixa.app.application.configuration.security.EstablishmentScopeGuard;
+import com.aerixa.app.application.configuration.security.EstablishmentAccessGuard;
 import com.aerixa.app.domain.auth.entity.Role;
 import com.aerixa.app.domain.auth.entity.User;
 import com.aerixa.app.domain.auth.repository.UserRepository;
-import com.aerixa.app.domain.configuration.entity.Establishment;
 import com.aerixa.app.domain.configuration.entity.ProgramTrack;
-import com.aerixa.app.infrastructure.configuration.repository.EstablishmentJpaRepository;
 import com.aerixa.app.infrastructure.configuration.repository.ProgramTrackJpaRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,16 +37,13 @@ class ProgramTrackServiceTest {
     private ProgramTrackJpaRepository programTrackJpaRepository;
 
     @Mock
-    private EstablishmentJpaRepository establishmentJpaRepository;
-
-    @Mock
     private UserRepository userRepository;
 
     @Mock
     private ConfigurationPermissionGuard permissionGuard;
 
     @Mock
-    private EstablishmentScopeGuard establishmentScopeGuard;
+    private EstablishmentAccessGuard establishmentAccessGuard;
 
     @Mock
     private ConfigurationAuditPublisher auditPublisher;
@@ -101,9 +96,6 @@ class ProgramTrackServiceTest {
 
         when(userRepository.findById(admin.getId())).thenReturn(Optional.of(admin));
         doNothing().when(permissionGuard).assertHasPermission(any(User.class), anyString());
-        when(establishmentJpaRepository.findById(establishmentId)).thenReturn(Optional.of(
-                Establishment.builder().id(establishmentId).createdByUserId(admin.getId()).code("EST").name("Est").build()
-        ));
         when(programTrackJpaRepository.existsByEstablishmentIdAndCodeIgnoreCase(establishmentId, "GL")).thenReturn(false);
         when(programTrackJpaRepository.save(any(ProgramTrack.class))).thenReturn(saved);
 
@@ -125,9 +117,6 @@ class ProgramTrackServiceTest {
 
         when(userRepository.findById(admin.getId())).thenReturn(Optional.of(admin));
         doNothing().when(permissionGuard).assertHasPermission(any(User.class), anyString());
-        when(establishmentJpaRepository.findById(establishmentId)).thenReturn(Optional.of(
-                Establishment.builder().id(establishmentId).createdByUserId(admin.getId()).code("EST").name("Est").build()
-        ));
         when(programTrackJpaRepository.findAllByEstablishmentId(any(UUID.class), any(org.springframework.data.domain.Sort.class)))
                 .thenReturn(List.of(track));
 
@@ -155,9 +144,6 @@ class ProgramTrackServiceTest {
 
         when(userRepository.findById(admin.getId())).thenReturn(Optional.of(admin));
         doNothing().when(permissionGuard).assertHasPermission(any(User.class), anyString());
-        when(establishmentJpaRepository.findById(establishmentId)).thenReturn(Optional.of(
-                Establishment.builder().id(establishmentId).createdByUserId(admin.getId()).code("EST").name("Est").build()
-        ));
         when(programTrackJpaRepository.findByIdAndEstablishmentId(id, establishmentId)).thenReturn(Optional.of(track));
         when(programTrackJpaRepository.save(any(ProgramTrack.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
