@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import {
   Contact,
@@ -21,6 +21,8 @@ import {
 import ReactCountryFlag from "react-country-flag";
 import { api, ApiError } from "@/lib/api";
 import { useDashboardStore } from "@/store/dashboard-store";
+import { useActiveEstablishment } from "@/hooks/use-active-establishment";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { MobileSectionTabs } from "@/components/dashboard/mobile-section-tabs";
 import { buildPermissionSet, hasPermission } from "@/lib/permissions";
@@ -45,9 +47,12 @@ import type {
   CandidateResponse,
   CandidateStatus,
   CreateCandidateRequest,
+  PagedResponse,
   UpdateCandidateRequest,
   WhatsappTarget,
 } from "@/lib/types";
+
+type PagedResponseLike = PagedResponse<CandidateResponse>;
 
 type CandidateFormState = {
   firstName: string;
@@ -240,10 +245,10 @@ function buildMappedFile(rows: string[][], mapping: Record<ImportFieldKey, strin
 
 export default function CandidatesPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { accessToken, locale, loadTokensFromStorage, setActiveTab } = useDashboardStore();
   const [isHydrated, setIsHydrated] = useState(false);
 
-  const [selectedEstId, setSelectedEstId] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | CandidateStatus>("ALL");
@@ -308,22 +313,22 @@ export default function CandidatesPage() {
   const canReadAcquisitionChannels = hasPermission(permissionSet, "acquisition_channels:list");
   const canReadEntryDiplomas = hasPermission(permissionSet, "entry_diplomas:list");
 
-  const establishmentsQuery = useQuery({
-    queryKey: ["config", "establishments", accessToken],
-    queryFn: () => api.configuration.establishments.list(accessToken),
-    enabled: Boolean(accessToken),
-  });
-
-  const effectiveEstId = selectedEstId || establishmentsQuery.data?.[0]?.id || "";
+  const {
+    establishments,
+    establishmentsQuery,
+    effectiveEstablishmentId: effectiveEstId,
+    isValidEstablishment,
+    selectEstablishment,
+  } = useActiveEstablishment();
 
   const estOptions = useMemo(
     () =>
-      (establishmentsQuery.data ?? []).map((est) => ({
+      establishments.map((est) => ({
         value: est.id,
         label: `${est.code} — ${est.name}`,
         keywords: [est.code, est.name, est.shortName ?? ""],
       })),
-    [establishmentsQuery.data],
+    [establishments],
   );
 
   const acquisitionChannelsQuery = useQuery({
@@ -392,56 +397,73 @@ export default function CandidatesPage() {
     return map;
   }, [entryDiplomasQuery.data]);
 
-  const query = useQuery({
-    queryKey: ["candidates", accessToken, effectiveEstId],
-    queryFn: () => api.candidates.list(accessToken, effectiveEstId),
-    enabled: Boolean(accessToken && effectiveEstId),
-  });
-
-  const items = useMemo(() => query.data ?? [], [query.data]);
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return items.filter((item) => {
-      const matchesStatus = statusFilter === "ALL" || item.status === statusFilter;
-      const matchesGender = genderFilter === "ALL" || (item.gender ?? "UNSPECIFIED") === genderFilter;
-      const matchesSearch =
-        q.length === 0 ||
-        `${item.firstName} ${item.lastName} ${item.candidatePhone} ${item.email ?? ""}`.toLowerCase().includes(q);
-      return matchesStatus && matchesGender && matchesSearch;
-    });
-  }, [items, search, statusFilter, genderFilter]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const pageItems = useMemo(() => filtered.slice(page * pageSize, (page + 1) * pageSize), [filtered, page, pageSize]);
+  const debouncedSearch = useDebouncedValue(search.trim(), 300);
 
   useEffect(() => {
-    const maxPage = Math.max(totalPages - 1, 0);
-    if (page > maxPage) setPage(maxPage);
-  }, [page, totalPages]);
+    setPage(0);
+  }, [effectiveEstId, statusFilter, debouncedSearch, pageSize]);
+
+  const candidatesQueryKey = [
+    "candidates",
+    "page",
+    effectiveEstId,
+    page,
+    pageSize,
+    statusFilter,
+    debouncedSearch,
+  ] as const;
+
+  const query = useQuery({
+    queryKey: candidatesQueryKey,
+    queryFn: () =>
+      api.candidates.listPaged(accessToken, effectiveEstId, {
+        page,
+        size: pageSize,
+        status: statusFilter,
+        search: debouncedSearch,
+      }),
+    enabled: Boolean(accessToken) && isValidEstablishment,
+    staleTime: 60_000,
+  });
+
+  // genderFilter reste applique cote client : non supporte par l'API (cf. api/docs/data-loading-optimization/02-BACKEND_CONTRACT.md)
+  const pageItems = useMemo(() => {
+    const items = query.data?.content ?? [];
+    return genderFilter === "ALL" ? items : items.filter((item) => (item.gender ?? "UNSPECIFIED") === genderFilter);
+  }, [query.data, genderFilter]);
+
+  const totalElements = query.data?.totalElements ?? 0;
+  const totalPages = Math.max(1, query.data?.totalPages ?? 1);
 
   useEffect(() => {
     setSelectedIds(new Set());
   }, [effectiveEstId, page]);
 
+  // Invalide toutes les pages/filtres de la liste candidates ainsi que le KPI de performance
+  // operateur du dashboard admin/super-admin, qui depend du meme jeu de donnees.
+  const invalidateCandidatesData = () => {
+    void queryClient.invalidateQueries({ queryKey: ["candidates"] });
+    void queryClient.invalidateQueries({ queryKey: ["pipeline-overview-operator-performance"] });
+  };
+
   const createMutation = useMutation({
     mutationFn: (payload: CreateCandidateRequest) => api.candidates.create(accessToken, payload),
-    onSuccess: async () => { await query.refetch(); setDialogOpen(false); setFormError(null); },
+    onSuccess: () => { invalidateCandidatesData(); setDialogOpen(false); setFormError(null); },
     onError: (err) => setFormError((err as Error).message),
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: UpdateCandidateRequest }) =>
       api.candidates.update(accessToken, id, effectiveEstId, payload),
-    onSuccess: async () => { await query.refetch(); setDialogOpen(false); setFormError(null); },
+    onSuccess: () => { invalidateCandidatesData(); setDialogOpen(false); setFormError(null); },
     onError: (err) => setFormError((err as Error).message),
   });
 
   const assignOperatorMutation = useMutation({
     mutationFn: ({ id, assignedOperatorId }: { id: string; assignedOperatorId: string }) =>
       api.candidates.update(accessToken, id, effectiveEstId, { assignedOperatorId }),
-    onSuccess: async () => {
-      await query.refetch();
+    onSuccess: () => {
+      invalidateCandidatesData();
       toast({ variant: "success", title: locale === "fr" ? "Opérateur affecté" : "Operator assigned" });
       setAssignOperatorDialogOpen(false);
       setAssignOperatorTarget(null);
@@ -452,26 +474,48 @@ export default function CandidatesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.candidates.delete(accessToken, id, effectiveEstId),
-    onSuccess: async () => { await query.refetch(); setDeleteTarget(null); setDeleteMode("soft"); },
+    onSuccess: () => { invalidateCandidatesData(); setDeleteTarget(null); setDeleteMode("soft"); },
     onError: (err) => toast({ variant: "error", title: locale === "fr" ? "Erreur" : "Error", description: (err as Error).message }),
   });
 
   const hardDeleteMutation = useMutation({
     mutationFn: (id: string) => api.candidates.hardDelete(accessToken, id, effectiveEstId),
-    onSuccess: async () => { await query.refetch(); setDeleteTarget(null); setDeleteMode("soft"); },
+    onSuccess: () => { invalidateCandidatesData(); setDeleteTarget(null); setDeleteMode("soft"); },
     onError: (err) => toast({ variant: "error", title: locale === "fr" ? "Erreur" : "Error", description: (err as Error).message }),
   });
 
+  // Bascule optimiste du statut sur la page courante du cache : applique le nouveau statut
+  // immediatement, et restaure l'etat precedent si la requete echoue. La queryKey est capturee
+  // au moment de l'appel pour cibler exactement la page/filtre affiches a cet instant.
+  const optimisticallySetStatus = (id: string, nextStatus: CandidateStatus) => {
+    const previous = queryClient.getQueryData<PagedResponseLike>(candidatesQueryKey);
+    if (previous) {
+      queryClient.setQueryData<PagedResponseLike>(candidatesQueryKey, {
+        ...previous,
+        content: previous.content.map((item) => (item.id === id ? { ...item, status: nextStatus } : item)),
+      });
+    }
+    return { queryKey: candidatesQueryKey, previous };
+  };
+
   const activateMutation = useMutation({
     mutationFn: (id: string) => api.candidates.activate(accessToken, id, effectiveEstId),
-    onSuccess: () => query.refetch(),
-    onError: (err) => toast({ variant: "error", title: locale === "fr" ? "Erreur" : "Error", description: (err as Error).message }),
+    onMutate: (id: string) => optimisticallySetStatus(id, "ACTIVE"),
+    onError: (err, _id, context) => {
+      if (context?.previous) queryClient.setQueryData(context.queryKey, context.previous);
+      toast({ variant: "error", title: locale === "fr" ? "Erreur" : "Error", description: (err as Error).message });
+    },
+    onSettled: invalidateCandidatesData,
   });
 
   const deactivateMutation = useMutation({
     mutationFn: (id: string) => api.candidates.deactivate(accessToken, id, effectiveEstId),
-    onSuccess: () => query.refetch(),
-    onError: (err) => toast({ variant: "error", title: locale === "fr" ? "Erreur" : "Error", description: (err as Error).message }),
+    onMutate: (id: string) => optimisticallySetStatus(id, "ARCHIVED"),
+    onError: (err, _id, context) => {
+      if (context?.previous) queryClient.setQueryData(context.queryKey, context.previous);
+      toast({ variant: "error", title: locale === "fr" ? "Erreur" : "Error", description: (err as Error).message });
+    },
+    onSettled: invalidateCandidatesData,
   });
 
   const exportMutation = useMutation({
@@ -493,8 +537,8 @@ export default function CandidatesPage() {
 
   const importMutation = useMutation({
     mutationFn: (file: File) => api.candidates.importExcel(accessToken, effectiveEstId, file),
-    onSuccess: async (result: CandidateImportResultResponse) => {
-      await query.refetch();
+    onSuccess: (result: CandidateImportResultResponse) => {
+      invalidateCandidatesData();
       setImportErrors(result.errors ?? []);
       toast({
         variant: result.failed > 0 ? "error" : "success",
@@ -832,23 +876,23 @@ export default function CandidatesPage() {
                   </div>
                 </div>
 
-                {/* KPI cards */}
+                {/* KPI cards (page courante uniquement, pagination serveur) */}
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Total</p>
-                    <p className="mt-2 text-2xl font-semibold">{items.length}</p>
+                    <p className="mt-2 text-2xl font-semibold">{totalElements}</p>
                   </div>
                   <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">{t.active}</p>
-                    <p className="mt-2 text-2xl font-semibold">{items.filter((x) => x.status === "ACTIVE").length}</p>
+                    <p className="mt-2 text-2xl font-semibold">{pageItems.filter((x) => x.status === "ACTIVE").length}</p>
                   </div>
                   <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">{t.archived}</p>
-                    <p className="mt-2 text-2xl font-semibold">{items.filter((x) => x.status === "ARCHIVED").length}</p>
+                    <p className="mt-2 text-2xl font-semibold">{pageItems.filter((x) => x.status === "ARCHIVED").length}</p>
                   </div>
                   <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">{locale === "fr" ? "Avec email" : "With email"}</p>
-                    <p className="mt-2 text-2xl font-semibold">{items.filter((x) => x.email).length}</p>
+                    <p className="mt-2 text-2xl font-semibold">{pageItems.filter((x) => x.email).length}</p>
                   </div>
                 </div>
               </CardHeader>
@@ -860,7 +904,7 @@ export default function CandidatesPage() {
                   <SearchableSelect
                     options={estOptions}
                     value={effectiveEstId}
-                    onValueChange={(v) => { setSelectedEstId(v); setPage(0); }}
+                    onValueChange={(v) => { selectEstablishment(v); setPage(0); }}
                     placeholder={locale === "fr" ? "Sélectionner un établissement" : "Select an establishment"}
                     searchPlaceholder={locale === "fr" ? "Rechercher..." : "Search..."}
                   />
@@ -1114,7 +1158,7 @@ export default function CandidatesPage() {
 
                 {/* Pagination */}
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-xs text-muted-foreground">{t.count(filtered.length)}</p>
+                  <p className="text-xs text-muted-foreground">{t.count(totalElements)}</p>
                   <div className="flex items-center gap-2">
                     <p className="text-xs text-muted-foreground">{t.pageLabel(page + 1, totalPages)}</p>
                     <Button variant="outline" size="sm" onClick={() => setPage(0)} disabled={page === 0}>«</Button>

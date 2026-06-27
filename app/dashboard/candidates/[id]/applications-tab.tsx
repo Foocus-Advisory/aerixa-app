@@ -326,8 +326,8 @@ export function ApplicationsTab({
 
   return (
     <>
-      <Card className="border-border/60 bg-card/70">
-        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-border/60 bg-card/70 md:h-full">
+        <CardHeader className="shrink-0 flex flex-col gap-3 border-b border-border/60 md:flex-row md:items-start md:justify-between">
           <div className="space-y-1">
             <CardTitle className="text-base">{t.title}</CardTitle>
             <CardDescription>{t.subtitle}</CardDescription>
@@ -384,7 +384,7 @@ export function ApplicationsTab({
             )}
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className={`min-h-0 flex-1 ${viewType === "KANBAN" ? "flex flex-col overflow-hidden" : "overflow-y-auto"}`}>
           {applicationsQuery.isLoading ? (
             <p className="py-8 text-center text-sm text-muted-foreground">{locale === "fr" ? "Chargement…" : "Loading…"}</p>
           ) : applicationsQuery.isError ? (
@@ -445,9 +445,9 @@ export function ApplicationsTab({
               </div>
 
               {/* Desktop: vue selon le sélecteur Kanban / Liste / Tableau */}
-              <div className="hidden md:block">
+              <div className={`hidden md:block ${viewType === "KANBAN" ? "md:flex md:min-h-0 md:flex-1 md:flex-col" : ""}`}>
               {viewType === "KANBAN" ? (
-            <div className="grid gap-3 overflow-x-auto pb-2" style={{ gridTemplateColumns: `repeat(${Math.max(orderedStages.length, 1)}, minmax(280px, 1fr))` }}>
+            <div className="grid min-h-0 flex-1 gap-3 overflow-x-auto pb-2" style={{ gridTemplateColumns: `repeat(${Math.max(orderedStages.length, 1)}, minmax(280px, 1fr))` }}>
               {orderedStages.map((stage) => {
                 const stageItems = items.filter((a) => a.currentStageId === stage.id);
                 const isDragOver = dragOverStageId === stage.id;
@@ -455,7 +455,7 @@ export function ApplicationsTab({
                 return (
                   <div
                     key={stage.id}
-                    className={`rounded-xl border p-4 transition-colors ${
+                    className={`flex h-full flex-col rounded-xl border p-4 transition-colors ${
                       isDragOver
                         ? dropAllowed
                           ? "border-primary bg-primary/10"
@@ -475,11 +475,11 @@ export function ApplicationsTab({
                       handleDropOnStage(stage.id);
                     }}
                   >
-                    <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
                       <Badge variant={stageTypeBadgeVariant(stage.stageType)}>{stage.name}</Badge>
                       <span className="text-xs text-muted-foreground">{stageItems.length}</span>
                     </div>
-                    <div className="grid gap-3">
+                    <div className="grid flex-1 auto-rows-min gap-3 overflow-y-auto">
                       {stageItems.map((item) => {
                         const draggable = canTransition && item.status === "IN_PROGRESS";
                         return (

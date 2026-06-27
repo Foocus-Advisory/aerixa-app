@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, ClipboardList, Eye, Filter, History, LayoutGrid, List, PlusCircle, RefreshCcw, Table as TableIcon, Workflow } from "lucide-react";
 import { api } from "@/lib/api";
 import { useDashboardStore } from "@/store/dashboard-store";
+import { useActiveEstablishment } from "@/hooks/use-active-establishment";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { MobileSectionTabs } from "@/components/dashboard/mobile-section-tabs";
 import { buildPermissionSet, hasPermission, canAccessTab } from "@/lib/permissions";
@@ -24,17 +25,20 @@ import type {
   CandidateApplicationResponse,
   CandidateApplicationStatus,
   FunnelStageType,
+  PagedResponse,
   PipelineViewType,
 } from "@/lib/types";
+
+type PagedResponseLike = PagedResponse<CandidateApplicationResponse>;
 
 const PAGE_SIZE = 10;
 
 export default function CandidateApplicationsPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { accessToken, locale, loadTokensFromStorage, setActiveTab } = useDashboardStore();
   const [isHydrated, setIsHydrated] = useState(false);
 
-  const [selectedEstId, setSelectedEstId] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"ALL" | CandidateApplicationStatus>("ALL");
   const [stageFilter, setStageFilter] = useState("ALL");
@@ -90,35 +94,35 @@ export default function CandidateApplicationsPage() {
   const canReadFunnelStageTransitions = hasPermission(permissionSet, "funnel_stage_transitions:list");
   const canReadPipelineViewPreference = hasPermission(permissionSet, "pipeline_view_preference:read");
 
-  const establishmentsQuery = useQuery({
-    queryKey: ["config", "establishments", accessToken],
-    queryFn: () => api.configuration.establishments.list(accessToken),
-    enabled: Boolean(accessToken),
-  });
-
-  const effectiveEstId = selectedEstId || establishmentsQuery.data?.[0]?.id || "";
+  const { establishments, establishmentsQuery, effectiveEstablishmentId: effectiveEstId, selectEstablishment } =
+    useActiveEstablishment();
 
   const estOptions = useMemo(
     () =>
-      (establishmentsQuery.data ?? []).map((est) => ({
+      establishments.map((est) => ({
         value: est.id,
         label: `${est.code} — ${est.name}`,
         keywords: [est.code, est.name, est.shortName ?? ""],
       })),
-    [establishmentsQuery.data],
+    [establishments],
   );
 
+  // Kanban et Liste ont besoin de l'ensemble des candidatures filtrees pour regrouper par
+  // etape de funnel ; seule la vue Tableau est reellement paginee. On charge donc une page
+  // large (plafonnee) plutot que de paginer ici. Voir api/docs/data-loading-optimization/01-PLAN.md.
+  const applicationsQueryKey = ["candidate-applications", "list", accessToken, effectiveEstId] as const;
+
   const query = useQuery({
-    queryKey: ["candidate-applications", "list", accessToken, effectiveEstId],
-    queryFn: () => api.candidateApplications.list(accessToken, effectiveEstId),
+    queryKey: applicationsQueryKey,
+    queryFn: () => api.candidateApplications.listPaged(accessToken, effectiveEstId, { size: 500 }),
     enabled: Boolean(accessToken && effectiveEstId && canAccess),
   });
 
-  const items = useMemo(() => query.data ?? [], [query.data]);
+  const items = useMemo(() => query.data?.content ?? [], [query.data]);
 
   const candidatesQuery = useQuery({
     queryKey: ["candidates", accessToken, effectiveEstId],
-    queryFn: () => api.candidates.list(accessToken, effectiveEstId),
+    queryFn: () => api.candidates.listPaged(accessToken, effectiveEstId, { size: 500 }),
     enabled: Boolean(accessToken && effectiveEstId),
   });
 
@@ -190,7 +194,7 @@ export default function CandidateApplicationsPage() {
 
   const candidateMap = useMemo(() => {
     const map = new Map<string, string>();
-    (candidatesQuery.data ?? []).forEach((c) => map.set(c.id, `${c.firstName} ${c.lastName}`));
+    (candidatesQuery.data?.content ?? []).forEach((c) => map.set(c.id, `${c.firstName} ${c.lastName}`));
     return map;
   }, [candidatesQuery.data]);
 
@@ -234,7 +238,7 @@ export default function CandidateApplicationsPage() {
 
   const candidateOptions = useMemo(
     () =>
-      (candidatesQuery.data ?? []).map((c) => ({
+      (candidatesQuery.data?.content ?? []).map((c) => ({
         value: c.id,
         label: `${c.firstName} ${c.lastName}`,
         keywords: [c.firstName, c.lastName],
@@ -344,14 +348,24 @@ export default function CandidateApplicationsPage() {
       }));
   }, [newApplicationEligibleLevelsQuery.data, newApplicationCandidateApplicationsQuery.data]);
 
+  // Invalide la liste des candidatures (toutes vues/etablissements), les listes de candidatures
+  // par candidat utilisees dans le dialogue de creation, et le KPI de performance operateur du
+  // dashboard, qui depend du meme jeu de donnees.
+  const invalidateApplicationsData = () => {
+    void queryClient.invalidateQueries({ queryKey: ["candidate-applications"] });
+    void queryClient.invalidateQueries({ queryKey: ["candidate", "applications"] });
+    void queryClient.invalidateQueries({ queryKey: ["pipeline-overview-applications"] });
+    void queryClient.invalidateQueries({ queryKey: ["pipeline-overview-operator-performance"] });
+  };
+
   const createMutation = useMutation({
     mutationFn: () =>
       api.candidateApplications.create(accessToken, newCandidateId, {
         establishmentId: effectiveEstId,
         programTrackLevelId: newProgramTrackLevelId,
       }),
-    onSuccess: async () => {
-      await query.refetch();
+    onSuccess: () => {
+      invalidateApplicationsData();
       setShowNewApplication(false);
       setNewCandidateId("");
       setNewProgramTrackLevelId("");
@@ -374,15 +388,35 @@ export default function CandidateApplicationsPage() {
         toStageId: transitionToStageId,
         note: transitionNote.trim(),
       }),
-    onSuccess: async () => {
-      await query.refetch();
+    // Deplace immediatement la candidature vers la nouvelle etape dans le cache (Kanban/Liste/
+    // Tableau partagent tous la meme requete `query`), pour que le drag&drop semble instantane ;
+    // restaure l'etape precedente si la transition est rejetee par le backend.
+    onMutate: () => {
+      const targetId = transitionTarget?.id;
+      const nextStageId = transitionToStageId;
+      const previous = queryClient.getQueryData<PagedResponseLike>(applicationsQueryKey);
+      if (targetId && previous) {
+        queryClient.setQueryData<PagedResponseLike>(applicationsQueryKey, {
+          ...previous,
+          content: previous.content.map((item) =>
+            item.id === targetId ? { ...item, currentStageId: nextStageId } : item,
+          ),
+        });
+      }
+      return { previous };
+    },
+    onSuccess: () => {
+      invalidateApplicationsData();
       setTransitionTarget(null);
       setTransitionToStageId("");
       setTransitionNote("");
       setTransitionError(null);
       toast({ variant: "success", title: locale === "fr" ? "Transition effectuée" : "Transition completed" });
     },
-    onError: (err) => setTransitionError((err as Error).message),
+    onError: (err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(applicationsQueryKey, context.previous);
+      setTransitionError((err as Error).message);
+    },
   });
 
   const t = {
@@ -595,7 +629,7 @@ export default function CandidateApplicationsPage() {
                     <SearchableSelect
                       options={estOptions}
                       value={effectiveEstId}
-                      onValueChange={(v) => setSelectedEstId(v)}
+                      onValueChange={(v) => selectEstablishment(v)}
                       placeholder={locale === "fr" ? "Sélectionner un établissement" : "Select an establishment"}
                       searchPlaceholder={locale === "fr" ? "Rechercher..." : "Search..."}
                     />
