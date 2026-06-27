@@ -1,5 +1,6 @@
 package com.aerixa.app.application.candidates.service;
 
+import com.aerixa.app.application.auth.dto.PagedResponse;
 import com.aerixa.app.application.candidates.dto.CandidateApplicationResponse;
 import com.aerixa.app.application.candidates.dto.CandidateApplicationStageHistoryResponse;
 import com.aerixa.app.application.candidates.dto.CreateCandidateApplicationRequest;
@@ -174,18 +175,53 @@ public class CandidateApplicationService {
     }
 
     @Transactional(readOnly = true)
-    public List<CandidateApplicationResponse> listByEstablishment(UUID actorUserId, UUID establishmentId, String correlationId) {
+    public PagedResponse<CandidateApplicationResponse> listByEstablishment(
+            UUID actorUserId, UUID establishmentId, int page, int size, String sortBy, String direction,
+            String status, UUID funnelStageId, String correlationId) {
         User actor = actor(actorUserId);
         permissionGuard.assertHasPermission(actor, CandidatesPermissions.CANDIDATE_APPLICATIONS_LIST);
         assertEstablishmentAccess(actor, establishmentId);
 
-        Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
-        List<CandidateApplication> items = isOperatorOnly(actor)
-                ? candidateApplicationJpaRepository.findVisibleToOperatorByEstablishment(establishmentId, actor.getId(), sort)
-                : candidateApplicationJpaRepository.findAllByEstablishmentId(establishmentId, sort);
+        Sort.Direction sortDirection = "asc".equalsIgnoreCase(direction) ? Sort.Direction.ASC : Sort.Direction.DESC;
+        String sortField = normalizeSortField(sortBy);
+        Pageable pageable = org.springframework.data.domain.PageRequest.of(
+                Math.max(page, 0), Math.min(Math.max(size, 1), 100), Sort.by(sortDirection, sortField));
+
+        CandidateApplicationStatus statusFilter = parseStatus(status);
+
+        org.springframework.data.domain.Page<CandidateApplication> items = isOperatorOnly(actor)
+                ? candidateApplicationJpaRepository.searchVisibleToOperatorByEstablishment(
+                        establishmentId, actor.getId(), statusFilter, funnelStageId, pageable)
+                : candidateApplicationJpaRepository.searchAllByEstablishmentId(
+                        establishmentId, statusFilter, funnelStageId, pageable);
+
         publishSuccess(actor.getId(), establishmentId, ConfigurationAuditAction.LIST, null, correlationId,
-                Map.of("count", items.size()));
-        return items.stream().map(this::toResponse).toList();
+                Map.of("count", items.getNumberOfElements()));
+
+        return PagedResponse.<CandidateApplicationResponse>builder()
+                .content(items.getContent().stream().map(this::toResponse).toList())
+                .page(items.getNumber())
+                .size(items.getSize())
+                .totalElements(items.getTotalElements())
+                .totalPages(items.getTotalPages())
+                .build();
+    }
+
+    private static final List<String> APPLICATION_SORTABLE_FIELDS = List.of("createdAt", "status");
+
+    private String normalizeSortField(String sortBy) {
+        return APPLICATION_SORTABLE_FIELDS.contains(sortBy) ? sortBy : "createdAt";
+    }
+
+    private CandidateApplicationStatus parseStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+        try {
+            return CandidateApplicationStatus.valueOf(status.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException("Statut candidature invalide: " + status);
+        }
     }
 
     @Transactional(readOnly = true)

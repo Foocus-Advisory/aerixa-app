@@ -1,5 +1,6 @@
 package com.aerixa.app.infrastructure.candidates.controller;
 
+import com.aerixa.app.application.auth.dto.PagedResponse;
 import com.aerixa.app.application.candidates.dto.CandidateApplicationResponse;
 import com.aerixa.app.application.candidates.dto.CandidateApplicationStageHistoryResponse;
 import com.aerixa.app.application.candidates.dto.CreateCandidateApplicationRequest;
@@ -57,11 +58,20 @@ public class CandidateApplicationsController {
 
     @GetMapping("/api/v1/candidate-applications")
     @PreAuthorize("hasAuthority('candidate_applications:list')")
-    @Operation(summary = "Lister toutes les candidatures d'un etablissement")
-    public ResponseEntity<List<CandidateApplicationResponse>> listByEstablishment(@RequestParam UUID establishmentId,
-                                                                                     Authentication authentication,
-                                                                                     HttpServletRequest httpRequest) {
-        return ResponseEntity.ok(candidateApplicationService.listByEstablishment(currentUserId(authentication), establishmentId, resolveCorrelationId(httpRequest)));
+    @Operation(summary = "Lister toutes les candidatures d'un etablissement (pagine)")
+    public ResponseEntity<PagedResponse<CandidateApplicationResponse>> listByEstablishment(
+            @RequestParam UUID establishmentId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @RequestParam(defaultValue = "desc") String direction,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) UUID funnelStageId,
+            Authentication authentication,
+            HttpServletRequest httpRequest) {
+        return ResponseEntity.ok(candidateApplicationService.listByEstablishment(
+                currentUserId(authentication), establishmentId, page, size, sortBy, direction, status, funnelStageId,
+                resolveCorrelationId(httpRequest)));
     }
 
     @GetMapping("/api/v1/candidate-applications/{id}")
