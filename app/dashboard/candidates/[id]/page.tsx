@@ -467,7 +467,7 @@ export default function CandidateDetailPage() {
             </div>
               </TabsContent>
 
-              <TabsContent value="applications" className="md:min-h-0 md:flex-1 md:overflow-y-auto">
+              <TabsContent value="applications" className="md:flex md:min-h-0 md:flex-1 md:flex-col">
                 <ApplicationsTab
                   accessToken={accessToken}
                   locale={locale}

@@ -326,8 +326,8 @@ export function ApplicationsTab({
 
   return (
     <>
-      <Card className="border-border/60 bg-card/70">
-        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-border/60 bg-card/70 md:h-full">
+        <CardHeader className="shrink-0 flex flex-col gap-3 border-b border-border/60 md:flex-row md:items-start md:justify-between">
           <div className="space-y-1">
             <CardTitle className="text-base">{t.title}</CardTitle>
             <CardDescription>{t.subtitle}</CardDescription>
@@ -384,7 +384,7 @@ export function ApplicationsTab({
             )}
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="min-h-0 flex-1 overflow-y-auto">
           {applicationsQuery.isLoading ? (
             <p className="py-8 text-center text-sm text-muted-foreground">{locale === "fr" ? "Chargement…" : "Loading…"}</p>
           ) : applicationsQuery.isError ? (
