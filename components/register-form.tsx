@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
@@ -9,6 +8,7 @@ import ReactCountryFlag from "react-country-flag";
 import { api } from "@/lib/api";
 import { dictionaries } from "@/lib/i18n";
 import { useDashboardStore } from "@/store/dashboard-store";
+import { BrandLogo, AUTH_LOGO_CLASS } from "@/components/brand-logo";
 import { GoogleAuthButton } from "@/components/auth/google-auth-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +18,7 @@ import { phonePrefixes } from "@/lib/phone-prefixes";
 
 export function RegisterForm() {
   const router = useRouter();
-  const { locale, theme, setTokens } = useDashboardStore();
+  const { locale, setTokens } = useDashboardStore();
   const t = dictionaries[locale];
   const [form, setForm] = useState({
     username: "",
@@ -66,14 +66,7 @@ export function RegisterForm() {
   return (
     <div className="space-y-4">
       <div className="space-y-2 text-center">
-        <Image
-          src={theme === "dark" ? "/img/logo-white.png" : "/img/logo-black.png"}
-          alt="AERIXA"
-          width={96}
-          height={96}
-          className="mx-auto h-24 w-24 object-contain"
-          priority
-        />
+        <BrandLogo className={AUTH_LOGO_CLASS} priority />
         <h2 className="text-[1.65rem] font-semibold tracking-tight">{t.authRegisterTitle}</h2>
         <p className="text-sm text-muted-foreground">{t.authRegisterSubtitle}</p>
       </div>

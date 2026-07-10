@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -10,6 +9,7 @@ import { dictionaries } from "@/lib/i18n";
 import { isTokenExpired } from "@/lib/jwt-utils";
 import { useDashboardStore } from "@/store/dashboard-store";
 import type { LoginResponse } from "@/lib/types";
+import { BrandLogo, AUTH_LOGO_CLASS } from "@/components/brand-logo";
 import { GoogleAuthButton } from "@/components/auth/google-auth-button";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -19,7 +19,7 @@ import { Lock } from "lucide-react";
 
 export default function SessionLockedPage() {
   const router = useRouter();
-  const { userEmail, locale, theme, sessionLocked, accessToken, preLockPath, unlockSession, setTokens, setUserEmail, setUnlockingInProgress } = useDashboardStore();
+  const { userEmail, locale, sessionLocked, accessToken, preLockPath, unlockSession, setTokens, setUserEmail, setUnlockingInProgress } = useDashboardStore();
   const { toast } = useToast();
   const t = dictionaries[locale];
   const [password, setPassword] = useState("");
@@ -100,14 +100,7 @@ export default function SessionLockedPage() {
 
         {/* Logo */}
         <div className="flex justify-center mt-4">
-          <Image
-            src={theme === "dark" ? "/img/logo-white.png" : "/img/logo-black.png"}
-            alt="AERIXA"
-            width={96}
-            height={96}
-            className="h-24 w-24 object-contain"
-            priority
-          />
+          <BrandLogo className={AUTH_LOGO_CLASS} priority />
         </div>
 
         {/* Icon */}

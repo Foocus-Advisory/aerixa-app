@@ -7,6 +7,7 @@ import { Bell, Languages, Moon, Search, Sun } from "lucide-react";
 import Image from "next/image";
 import { api } from "@/lib/api";
 import { useDashboardStore } from "@/store/dashboard-store";
+import { BrandLogo } from "@/components/brand-logo";
 import { buildPermissionSet, hasPermission } from "@/lib/permissions";
 import { tabToPath } from "@/lib/dashboard-routes";
 import { decodeJwt } from "@/lib/jwt-utils";
@@ -179,12 +180,11 @@ export function AdminTopBar() {
   return (
     <header className="sticky top-0 z-20 border-b border-border/50 bg-background/95 backdrop-blur">
       <div className="flex h-16 items-center gap-3 px-4 md:px-8">
-        <Image
-          src={theme === "dark" ? "/img/min-logo-dark.png" : "/img/min-logo-light.png"}
-          alt="AERIXA"
+        <BrandLogo
+          variant="admin"
+          className="h-8 w-8 shrink-0 md:hidden"
           width={32}
           height={32}
-          className="h-8 w-8 shrink-0 object-contain md:hidden"
           priority
         />
 

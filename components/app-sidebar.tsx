@@ -2,7 +2,6 @@
 
 import { useMemo, useRef, useState, type ComponentType } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
@@ -33,6 +32,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BrandLogo } from "@/components/brand-logo";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { dictionaries } from "@/lib/i18n";
@@ -215,7 +215,7 @@ export const menusByLocale = {
 
 export function AppSidebar() {
   const router = useRouter();
-  const { locale, theme, activeTab, clearTokens, accessToken } = useDashboardStore();
+  const { locale, activeTab, clearTokens, accessToken } = useDashboardStore();
   const [hovered, setHovered] = useState<string | null>(null);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [mobileOverflowOpen, setMobileOverflowOpen] = useState(false);
@@ -299,14 +299,7 @@ export function AppSidebar() {
   return (
     <>
     <aside className="fixed left-0 top-0 z-40 hidden h-screen w-18.5 border-r border-border/60 bg-sidebar/90 md:flex md:flex-col md:items-center md:gap-4 md:py-4">
-      <Image
-        src={theme === "dark" ? "/img/min-logo-dark.png" : "/img/min-logo-light.png"}
-        alt="AERIXA"
-        width={36}
-        height={36}
-        className="h-9 w-9 object-contain"
-        priority
-      />
+      <BrandLogo variant="admin" className="h-9 w-9" priority />
 
       <nav className="relative mt-3 flex w-full flex-1 flex-col items-center gap-2 overflow-visible">
         {filteredItems.map((item) => {

@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
@@ -9,6 +8,7 @@ import { api } from "@/lib/api";
 import { getAuthErrorToast } from "@/lib/auth-error-toast";
 import { dictionaries } from "@/lib/i18n";
 import { useDashboardStore } from "@/store/dashboard-store";
+import { BrandLogo, AUTH_LOGO_CLASS } from "@/components/brand-logo";
 import { GoogleAuthButton } from "@/components/auth/google-auth-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,7 @@ import { useToast } from "@/components/ui/toast-provider";
 
 export function LoginForm() {
   const router = useRouter();
-  const { locale, theme, setTokens } = useDashboardStore();
+  const { locale, setTokens } = useDashboardStore();
   const { toast } = useToast();
   const t = dictionaries[locale];
   const [email, setEmail] = useState("");
@@ -59,14 +59,7 @@ export function LoginForm() {
   return (
     <div className="space-y-4">
       <div className="space-y-2 text-center">
-        <Image
-          src={theme === "dark" ? "/img/logo-white.png" : "/img/logo-black.png"}
-          alt="AERIXA"
-          width={96}
-          height={96}
-          className="mx-auto h-24 w-24 object-contain"
-          priority
-        />
+        <BrandLogo className={AUTH_LOGO_CLASS} priority />
         <h2 className="text-[1.75rem] font-semibold tracking-tight">{t.authLoginTitle}</h2>
         <p className="text-sm text-muted-foreground">{t.authLoginSubtitle}</p>
       </div>
