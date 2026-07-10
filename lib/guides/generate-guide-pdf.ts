@@ -34,8 +34,8 @@ const CALLOUT_COLORS: Record<GuideCalloutTone, readonly [number, number, number]
   tip: COLORS.primary,
 };
 
-const LOGO_PATH = "/img/logo-white.png";
-const LOGO_ASPECT_RATIO = 65 / 336;
+const LOGO_PATH = "/img/Logo_AERIXA_light.png";
+const LOGO_ASPECT_RATIO = 12000 / 21334;
 
 const FONT_FAMILY = "Grift";
 const FONT_FILES: Record<"normal" | "bold" | "italic", string> = {
