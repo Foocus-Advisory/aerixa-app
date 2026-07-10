@@ -9,7 +9,7 @@ import { dictionaries } from "@/lib/i18n";
 import { isTokenExpired } from "@/lib/jwt-utils";
 import { useDashboardStore } from "@/store/dashboard-store";
 import type { LoginResponse } from "@/lib/types";
-import { BrandLogo } from "@/components/brand-logo";
+import { BrandLogo, AUTH_LOGO_CLASS } from "@/components/brand-logo";
 import { GoogleAuthButton } from "@/components/auth/google-auth-button";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -100,7 +100,7 @@ export default function SessionLockedPage() {
 
         {/* Logo */}
         <div className="flex justify-center mt-4">
-          <BrandLogo className="h-16 w-auto" priority />
+          <BrandLogo className={AUTH_LOGO_CLASS} priority />
         </div>
 
         {/* Icon */}

@@ -3,7 +3,7 @@
 import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
-import { BrandLogo } from "@/components/brand-logo";
+import { BrandLogo, AUTH_LOGO_CLASS } from "@/components/brand-logo";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,7 +66,7 @@ function MfaLoginPageContent() {
     return (
       <AuthShell>
         <div className="space-y-4">
-          <BrandLogo className="mx-auto h-16 w-auto" priority />
+          <BrandLogo className={AUTH_LOGO_CLASS} priority />
           <h2 className="text-[1.5rem] font-semibold tracking-tight">MFA requis</h2>
           <p className="text-sm text-muted-foreground">Le challenge MFA est manquant. Reconnectez-vous.</p>
           <Button className="h-11 rounded-full" onClick={() => router.push("/login")}>Retour a la connexion</Button>
@@ -79,7 +79,7 @@ function MfaLoginPageContent() {
     <AuthShell>
       <div className="space-y-4">
         <div className="space-y-2 text-center">
-          <BrandLogo className="mx-auto h-16 w-auto" priority />
+          <BrandLogo className={AUTH_LOGO_CLASS} priority />
           <h2 className="text-[1.75rem] font-semibold tracking-tight">Verification MFA</h2>
           <p className="text-sm text-muted-foreground">Entrez le code a 6 chiffres de votre application d&apos;authentification.</p>
         </div>

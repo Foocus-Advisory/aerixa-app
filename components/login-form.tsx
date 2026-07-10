@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 import { getAuthErrorToast } from "@/lib/auth-error-toast";
 import { dictionaries } from "@/lib/i18n";
 import { useDashboardStore } from "@/store/dashboard-store";
-import { BrandLogo } from "@/components/brand-logo";
+import { BrandLogo, AUTH_LOGO_CLASS } from "@/components/brand-logo";
 import { GoogleAuthButton } from "@/components/auth/google-auth-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,7 +59,7 @@ export function LoginForm() {
   return (
     <div className="space-y-4">
       <div className="space-y-2 text-center">
-        <BrandLogo className="mx-auto h-16 w-auto" priority />
+        <BrandLogo className={AUTH_LOGO_CLASS} priority />
         <h2 className="text-[1.75rem] font-semibold tracking-tight">{t.authLoginTitle}</h2>
         <p className="text-sm text-muted-foreground">{t.authLoginSubtitle}</p>
       </div>

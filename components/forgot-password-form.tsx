@@ -6,7 +6,7 @@ import { useMutation } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { dictionaries } from "@/lib/i18n";
 import { useDashboardStore } from "@/store/dashboard-store";
-import { BrandLogo } from "@/components/brand-logo";
+import { BrandLogo, AUTH_LOGO_CLASS } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -25,7 +25,7 @@ export function ForgotPasswordForm() {
   return (
     <div className="space-y-4">
       <div className="space-y-2 text-center">
-        <BrandLogo className="mx-auto h-16 w-auto" priority />
+        <BrandLogo className={AUTH_LOGO_CLASS} priority />
         <h2 className="text-[1.4rem] font-semibold tracking-tight">{t.authForgotTitle}</h2>
         <p className="text-sm text-muted-foreground">{t.authForgotSubtitle}</p>
       </div>
